@@ -1,19 +1,30 @@
 <script>
-	import { Search, Link, Loader2, AlertCircle, X, ExternalLink, Image } from 'lucide-svelte';
+	import {
+		Search,
+		Link,
+		Loader2,
+		AlertCircle,
+		X,
+		ExternalLink,
+		Image,
+		Sparkles
+	} from 'lucide-svelte';
 	import { searchImages } from '#lib/services/imageSearch.js';
+	import { fetchDisambiguation } from '#lib/services/ai.js';
+	import { board } from '#lib/stores/board.svelte.js';
 
 	/**
 	 * @type {{
-	 *   open: boolean;
-	 *   initialQuery: string;
-	 *   itemName: string;
+	 *   open?: boolean;
+	 *   initialQuery?: string;
+	 *   itemName?: string;
 	 *   mode?: 'create' | 'change';
 	 *   onselect: (result: { name: string; imageUrl: string; sourceUrl?: string }) => void;
 	 *   onclose: () => void;
 	 * }}
 	 */
 	let {
-		open = $bindable(false),
+		open = false,
 		initialQuery = '',
 		itemName = '',
 		mode = 'create',
@@ -24,6 +35,7 @@
 	let query = $state('');
 	let manualUrl = $state('');
 	let isLoading = $state(false);
+	let isRefining = $state(false);
 	/** @type {import('#lib/types.js').ImageSearchResult[]} */
 	let results = $state([]);
 	let error = $state('');
@@ -43,6 +55,23 @@
 			}
 		}
 	});
+
+	/**
+	 * Disambiguates and improves the query using AI
+	 */
+	async function handleAiRefine() {
+		const target = query.trim() || itemName;
+		if (!target || isRefining) return;
+
+		isRefining = true;
+		const refined = await fetchDisambiguation(target, board.context);
+		isRefining = false;
+
+		if (refined?.searchQuery) {
+			query = refined.searchQuery;
+			performSearch(refined.searchQuery);
+		}
+	}
 
 	/**
 	 * @param {string} searchQuery
@@ -192,6 +221,20 @@
 							/>
 						</div>
 						<button
+							type="button"
+							disabled={isRefining || !query.trim()}
+							class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-500/20 disabled:pointer-events-none disabled:opacity-40"
+							onclick={handleAiRefine}
+							title="Fix typos and find canonical search keywords with AI"
+						>
+							{#if isRefining}
+								<Loader2 size={13} class="animate-spin text-purple-400" />
+							{:else}
+								<Sparkles size={13} class="text-purple-400" />
+							{/if}
+							<span>AI Refine</span>
+						</button>
+						<button
 							type="submit"
 							disabled={isLoading || !query.trim()}
 							class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 disabled:pointer-events-none disabled:opacity-50"
@@ -200,7 +243,7 @@
 								<Loader2 size={13} class="animate-spin" />
 								<span>Searching...</span>
 							{:else}
-								<span>Search Again</span>
+								<span>Search</span>
 							{/if}
 						</button>
 					</form>
@@ -304,6 +347,8 @@
 									src={item.thumbnailUrl || item.imageUrl}
 									alt={item.title}
 									loading="lazy"
+									decoding="async"
+									referrerpolicy="no-referrer"
 									class="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
 								/>
 
@@ -320,7 +365,13 @@
 										<div class="mt-0.5 flex items-center gap-1 truncate text-[9px] text-zinc-400">
 											<ExternalLink size={9} />
 											<span class="truncate">
-												{new URL(item.sourceUrl).hostname.replace('www.', '')}
+												{(() => {
+													try {
+														return new URL(item.sourceUrl).hostname.replace(/^www\./, '');
+													} catch {
+														return 'source';
+													}
+												})()}
 											</span>
 										</div>
 									{/if}
@@ -335,7 +386,7 @@
 			<div
 				class="flex items-center justify-between border-t border-zinc-800 bg-zinc-950 px-5 py-2.5 text-[11px] text-zinc-500"
 			>
-				<span>Powered by Brave Search</span>
+				<span>Powered by Google Images & Web Search</span>
 				<span>Press Escape to close</span>
 			</div>
 		</div>

@@ -4,6 +4,7 @@
 	import Header from '#lib/components/Header.svelte';
 	import AddItem from '#lib/components/AddItem.svelte';
 	import TierBoard from '#lib/components/TierBoard.svelte';
+	import Footer from '#lib/components/Footer.svelte';
 
 	onMount(() => {
 		board.init();
@@ -11,10 +12,14 @@
 </script>
 
 <svelte:head>
-	<title>{board.title ? `${board.title} - On-Demand Tier List` : 'On-Demand Tier List'}</title>
+	<title
+		>{board.title && board.title !== 'Tier List'
+			? `${board.title} - Imagine a Tier List`
+			: 'Imagine a Tier List - AI-Powered On-Demand Tier List Maker'}</title
+	>
 	<meta
 		name="description"
-		content="Lightweight on-demand tier-list maker where items are created dynamically from text search."
+		content="Create custom tier lists instantly without uploading images. Search topics to generate cards on the fly, brainstorm with AI suggestions, and auto-rank with intelligent reasoning."
 	/>
 </svelte:head>
 
@@ -27,8 +32,5 @@
 		<TierBoard />
 	</div>
 
-	<!-- Minimal Footer -->
-	<footer class="mt-12 border-t border-zinc-900 py-6 text-center text-xs text-zinc-600">
-		<p>On-Demand Tier List &bull; Type &rarr; Search &rarr; Click &rarr; Rank</p>
-	</footer>
+	<Footer />
 </main>

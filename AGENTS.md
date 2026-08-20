@@ -29,3 +29,14 @@ You MUST use this tool whenever writing Svelte code before sending it to the use
 
 Generates a Svelte Playground link with the provided code.
 After completing the code, ask the user if they want a playground link. Only call this tool after user confirmation and NEVER if code was written to files in their project.
+
+---
+
+## Build Troubleshooting
+
+### Windows Build: `@sveltejs/adapter-vercel`
+
+If `bun run build` hangs indefinitely at `Generating serverless function...`:
+
+- **Cause**: `@sveltejs/adapter-vercel` walks up to `C:\` for the `@vercel/nft` trace root.
+- **Fix**: In `node_modules/@sveltejs/adapter-vercel/index.js`, replace the `base` loop with `let base = process.cwd();` and ensure handler path generation uses `path.relative(ancestor, entry).replace(/\\/g, '/')`.

@@ -74,7 +74,7 @@
 
 <!-- Change Image Picker Modal -->
 <ImagePicker
-	bind:open={changeImageModalOpen}
+	open={changeImageModalOpen}
 	initialQuery={changeImageQuery}
 	itemName={itemToChangeImage?.name || ''}
 	mode="change"

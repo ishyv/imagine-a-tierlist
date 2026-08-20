@@ -1,8 +1,14 @@
 import {
 	loadBoardFromStorage,
 	saveBoardToStorage,
+	loadBoardById,
+	saveBoardToRegistry,
+	deleteBoardFromRegistry,
+	getBoardsRegistry,
+	sanitizeBoard,
 	CURRENT_VERSION
 } from '#lib/services/persistence.js';
+import { cardStash } from '#lib/stores/cardStash.svelte.js';
 
 /**
  * @typedef {import('#lib/types.js').Tier} Tier
@@ -39,13 +45,15 @@ export function createDefaultTiers() {
 }
 
 /**
+ * @param {string} [title]
+ * @param {string} [context]
  * @returns {Board}
  */
-export function createDefaultBoard() {
+export function createDefaultBoard(title = 'Tier List', context = '') {
 	return {
-		id: 'board-default',
-		title: 'Tier List',
-		context: '',
+		id: `board-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+		title,
+		context,
 		tiers: createDefaultTiers(),
 		items: [],
 		version: CURRENT_VERSION
@@ -62,6 +70,8 @@ class BoardStore {
 	version = $state(CURRENT_VERSION);
 	id = $state('board-default');
 	initialized = $state(false);
+	lastSavedAt = $state(Date.now());
+	isSaved = $state(true);
 
 	constructor() {
 		// Initialization handled via init() in browser mount
@@ -69,6 +79,9 @@ class BoardStore {
 
 	init() {
 		if (this.initialized) return;
+
+		cardStash.init();
+
 		const saved = loadBoardFromStorage();
 		if (saved) {
 			this.id = saved.id || 'board-default';
@@ -79,10 +92,12 @@ class BoardStore {
 			this.items = Array.isArray(saved.items) ? saved.items : [];
 			this.version = saved.version || CURRENT_VERSION;
 		}
+
 		this.initialized = true;
 	}
 
 	persist() {
+		this.isSaved = false;
 		saveBoardToStorage({
 			id: this.id,
 			title: this.title,
@@ -91,6 +106,8 @@ class BoardStore {
 			items: $state.snapshot(this.items),
 			version: this.version
 		});
+		this.lastSavedAt = Date.now();
+		this.isSaved = true;
 	}
 
 	/**
@@ -114,44 +131,78 @@ class BoardStore {
 	 * @returns {Item[]}
 	 */
 	getItemsForTier(tierId) {
-		return this.items.filter((item) => item.tierId === tierId).sort((a, b) => a.order - b.order);
+		return this.items
+			.filter((item) => item && typeof item === 'object' && item.tierId === tierId)
+			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 	}
 
 	/**
 	 * @param {string} label
 	 * @param {string} color
-	 * @param {string | null} [afterTierId]
+	 * @returns {Tier}
 	 */
-	addTier(label, color, afterTierId = null) {
+	addTier(label = 'NEW', color = '#3b82f6') {
+		const newOrder = this.tiers.length;
 		const newTier = {
 			id: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-			label: label.trim() || 'New',
-			color: color || '#3b82f6',
-			order: this.tiers.length
+			label,
+			color,
+			order: newOrder
+		};
+		this.tiers.push(newTier);
+		this.persist();
+		return newTier;
+	}
+
+	/**
+	 * Adds a new tier immediately above a reference tier
+	 * @param {string} targetTierId
+	 * @param {string} [label]
+	 * @param {string} [color]
+	 */
+	addTierAbove(targetTierId, label = 'NEW', color = '#3b82f6') {
+		const targetIndex = this.tiers.findIndex((t) => t.id === targetTierId);
+		if (targetIndex === -1) return this.addTier(label, color);
+
+		const newTier = {
+			id: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+			label,
+			color,
+			order: targetIndex
 		};
 
-		if (afterTierId) {
-			const index = this.tiers.findIndex((t) => t.id === afterTierId);
-			if (index !== -1) {
-				this.tiers.splice(index + 1, 0, newTier);
-			} else {
-				this.tiers.push(newTier);
-			}
-		} else {
-			this.tiers.push(newTier);
-		}
+		this.tiers.splice(targetIndex, 0, newTier);
+		this.reindexTiers();
+		this.persist();
+		return newTier;
+	}
 
-		this.tiers.forEach((tier, idx) => {
-			tier.order = idx;
-		});
+	/**
+	 * Adds a new tier immediately below a reference tier
+	 * @param {string} targetTierId
+	 * @param {string} [label]
+	 * @param {string} [color]
+	 */
+	addTierBelow(targetTierId, label = 'NEW', color = '#3b82f6') {
+		const targetIndex = this.tiers.findIndex((t) => t.id === targetTierId);
+		if (targetIndex === -1) return this.addTier(label, color);
 
+		const newTier = {
+			id: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+			label,
+			color,
+			order: targetIndex + 1
+		};
+
+		this.tiers.splice(targetIndex + 1, 0, newTier);
+		this.reindexTiers();
 		this.persist();
 		return newTier;
 	}
 
 	/**
 	 * @param {string} tierId
-	 * @param {Partial<Pick<Tier, 'label' | 'color'>>} updates
+	 * @param {Partial<Pick<Tier, 'label' | 'color' | 'order' | 'imageUrl'>>} updates
 	 */
 	updateTier(tierId, updates) {
 		const tier = this.tiers.find((t) => t.id === tierId);
@@ -159,86 +210,211 @@ class BoardStore {
 
 		if (typeof updates.label === 'string') tier.label = updates.label;
 		if (typeof updates.color === 'string') tier.color = updates.color;
+		if (typeof updates.order === 'number') tier.order = updates.order;
+		if ('imageUrl' in updates) {
+			tier.imageUrl = updates.imageUrl ? updates.imageUrl.trim() : undefined;
+		}
 
 		this.persist();
 	}
 
 	/**
-	 * Deletes a tier and safely moves all its items to Unranked (tierId: null)
+	 * Moves a tier up in order
+	 * @param {string} tierId
+	 */
+	moveTierUp(tierId) {
+		const index = this.tiers.findIndex((t) => t.id === tierId);
+		if (index <= 0) return;
+
+		const temp = this.tiers[index - 1];
+		this.tiers[index - 1] = this.tiers[index];
+		this.tiers[index] = temp;
+
+		this.reindexTiers();
+		this.persist();
+	}
+
+	/**
+	 * Moves a tier down in order
+	 * @param {string} tierId
+	 */
+	moveTierDown(tierId) {
+		const index = this.tiers.findIndex((t) => t.id === tierId);
+		if (index === -1 || index >= this.tiers.length - 1) return;
+
+		const temp = this.tiers[index + 1];
+		this.tiers[index + 1] = this.tiers[index];
+		this.tiers[index] = temp;
+
+		this.reindexTiers();
+		this.persist();
+	}
+
+	/**
+	 * Re-indexes all tier orders cleanly (0..N-1)
+	 */
+	reindexTiers() {
+		this.tiers.forEach((tier, idx) => {
+			tier.order = idx;
+		});
+	}
+
+	/**
+	 * Moves all items in a tier to Unranked (tierId = null)
+	 * @param {string} tierId
+	 */
+	clearTier(tierId) {
+		const unranked = this.getItemsForTier(null);
+		let nextOrder = unranked.length;
+
+		for (const item of this.items) {
+			if (item.tierId === tierId) {
+				item.tierId = null;
+				item.order = nextOrder++;
+			}
+		}
+
+		this.persist();
+	}
+
+	/**
+	 * Deletes a tier and moves all contained cards safely to Unranked pool
 	 * @param {string} tierId
 	 */
 	deleteTier(tierId) {
-		// Preserves cards by assigning them to unranked
-		for (const item of this.items) {
-			if (item.tierId === tierId) {
-				item.tierId = null;
-			}
-		}
-
+		this.clearTier(tierId);
 		this.tiers = this.tiers.filter((t) => t.id !== tierId);
-		this.tiers.forEach((tier, idx) => {
-			tier.order = idx;
-		});
-
+		this.reindexTiers();
 		this.persist();
 	}
 
 	/**
-	 * Moves a tier up or down
-	 * @param {string} tierId
-	 * @param {'up' | 'down'} direction
-	 */
-	moveTier(tierId, direction) {
-		const index = this.tiers.findIndex((t) => t.id === tierId);
-		if (index === -1) return;
-
-		const targetIndex = direction === 'up' ? index - 1 : index + 1;
-		if (targetIndex < 0 || targetIndex >= this.tiers.length) return;
-
-		const [moved] = this.tiers.splice(index, 1);
-		this.tiers.splice(targetIndex, 0, moved);
-
-		this.tiers.forEach((tier, idx) => {
-			tier.order = idx;
-		});
-
-		this.persist();
-	}
-
-	/**
-	 * Clears cards from a tier back into unranked pool
-	 * @param {string} tierId
-	 */
-	clearTierCards(tierId) {
-		for (const item of this.items) {
-			if (item.tierId === tierId) {
-				item.tierId = null;
-			}
-		}
-		this.persist();
-	}
-
-	/**
-	 * Adds a new item to the Unranked pool
+	 * Adds a single card to Unranked pool and automatically pipes to Global Card Stash
 	 * @param {string} name
 	 * @param {string} imageUrl
 	 * @param {string} [sourceUrl]
 	 * @returns {Item}
 	 */
-	addItem(name, imageUrl, sourceUrl = '') {
+	addItem(name, imageUrl, sourceUrl) {
 		const unranked = this.getItemsForTier(null);
 		const newItem = {
-			id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+			id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 			name: name.trim(),
-			imageUrl: imageUrl.trim(),
-			sourceUrl: sourceUrl.trim() || undefined,
+			imageUrl: (imageUrl || '').trim(),
+			sourceUrl: sourceUrl?.trim() || undefined,
 			tierId: null,
 			order: unranked.length
 		};
 
 		this.items.push(newItem);
 		this.persist();
+
+		// Auto-save to permanent Global Card Stash
+		cardStash.addCard({
+			name: newItem.name,
+			imageUrl: newItem.imageUrl,
+			sourceUrl: newItem.sourceUrl,
+			context: this.context
+		});
+
 		return newItem;
+	}
+
+	/**
+	 * Adds multiple items to the Unranked pool in a single batch and pipes to Card Stash
+	 * @param {Array<{ name: string; imageUrl: string; sourceUrl?: string }>} itemsList
+	 * @returns {Item[]}
+	 */
+	addMultipleItems(itemsList) {
+		const unranked = this.getItemsForTier(null);
+		let currentOrder = unranked.length;
+
+		/** @type {Item[]} */
+		const newItems = [];
+
+		for (const item of itemsList) {
+			const trimmedName = (item.name || '').trim();
+			if (!trimmedName) continue;
+
+			const newItem = {
+				id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+				name: trimmedName,
+				imageUrl: (item.imageUrl || '').trim(),
+				sourceUrl: (item.sourceUrl || '').trim() || undefined,
+				tierId: null,
+				order: currentOrder++
+			};
+
+			newItems.push(newItem);
+			this.items.push(newItem);
+		}
+
+		this.persist();
+
+		// Auto-save batch to permanent Global Card Stash
+		cardStash.addBulkCards(newItems, this.context);
+
+		return newItems;
+	}
+
+	/**
+	 * Adds a card from the global stash directly to the board
+	 * @param {import('#lib/stores/cardStash.svelte.js').StashCard} stashCard
+	 * @param {string | null} [targetTierId]
+	 * @returns {Item}
+	 */
+	addCardFromStash(stashCard, targetTierId = null) {
+		const existingItemsInTier = this.getItemsForTier(targetTierId);
+		const newItem = {
+			id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+			name: stashCard.name,
+			imageUrl: stashCard.imageUrl,
+			sourceUrl: stashCard.sourceUrl,
+			tierId: targetTierId,
+			order: existingItemsInTier.length
+		};
+
+		this.items.push(newItem);
+		this.persist();
+
+		// Update usage count in stash
+		cardStash.addCard({
+			name: stashCard.name,
+			imageUrl: stashCard.imageUrl,
+			sourceUrl: stashCard.sourceUrl,
+			context: this.context
+		});
+
+		return newItem;
+	}
+
+	/**
+	 * Applies AI rankings to distribute items across tiers
+	 * @param {Array<{ itemId: string; tierId: string; reason?: string }>} rankings
+	 */
+	applyRankings(rankings) {
+		const rankMap = new Map(rankings.map((r) => [r.itemId, r.tierId]));
+
+		// Count existing orders per tier to preserve stable ordering
+		/** @type {Record<string, number>} */
+		const tierCounters = {};
+		for (const tier of this.tiers) {
+			tierCounters[tier.id] = 0;
+		}
+
+		for (const item of this.items) {
+			if (rankMap.has(item.id)) {
+				const targetTierId = rankMap.get(item.id) || null;
+				item.tierId = targetTierId;
+				const currentCount = targetTierId ? tierCounters[targetTierId] || 0 : 0;
+				item.order = currentCount;
+				if (targetTierId) {
+					tierCounters[targetTierId] = currentCount + 1;
+				}
+			}
+		}
+
+		this.persist();
 	}
 
 	/**
@@ -273,19 +449,21 @@ class BoardStore {
 	 * @param {Item[]} tierItems
 	 */
 	updateTierItems(tierId, tierItems) {
-		const updatedIds = new Set(tierItems.map((i) => i.id));
+		const validTierItems = Array.isArray(tierItems)
+			? tierItems.filter((item) => item && typeof item === 'object' && typeof item.id === 'string')
+			: [];
+		const updatedIds = new Set(validTierItems.map((i) => i.id));
 		const currentTierItemsMap = new Map(
-			tierItems.map((item, idx) => [item.id, { ...item, tierId, order: idx }])
+			validTierItems.map((item, idx) => [item.id, { ...item, tierId, order: idx }])
 		);
 
-		// Update items in the main array
+		// Build next items safely without ever dropping items that are in transition
 		const nextItems = [];
 		for (const item of this.items) {
+			if (!item || !item.id) continue;
 			if (updatedIds.has(item.id)) {
 				const updated = currentTierItemsMap.get(item.id);
 				if (updated) nextItems.push(updated);
-			} else if (item.tierId === tierId) {
-				// Item was moved out of this tier, will be accounted for in the target tier
 			} else {
 				nextItems.push(item);
 			}
@@ -293,13 +471,89 @@ class BoardStore {
 
 		// Also make sure any newly added items to tierItems (e.g. dragged from another tier) are included
 		for (const [id, item] of currentTierItemsMap.entries()) {
-			if (!nextItems.some((i) => i.id === id)) {
+			if (!nextItems.some((i) => i && i.id === id)) {
 				nextItems.push(item);
 			}
 		}
 
 		this.items = nextItems;
 		this.persist();
+	}
+
+	/**
+	 * Starts a new blank tier list while safely preserving the current one in the registry
+	 * @param {string} [title]
+	 * @param {string} [context]
+	 */
+	createNewBoard(title = 'New Tier List', context = '') {
+		// Save current board to registry
+		this.persist();
+
+		// Switch to fresh board
+		this.id = `board-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+		this.title = title;
+		this.context = context;
+		this.tiers = createDefaultTiers();
+		this.items = [];
+		this.persist();
+	}
+
+	/**
+	 * Switches to a saved board by ID
+	 * @param {string} boardId
+	 */
+	switchBoard(boardId) {
+		if (boardId === this.id) return;
+
+		// Save current before switching
+		this.persist();
+
+		const loaded = loadBoardById(boardId);
+		if (loaded) {
+			this.id = loaded.id || boardId;
+			this.title = loaded.title || 'Tier List';
+			this.context = loaded.context || '';
+			this.tiers =
+				Array.isArray(loaded.tiers) && loaded.tiers.length > 0
+					? loaded.tiers
+					: createDefaultTiers();
+			this.items = Array.isArray(loaded.items) ? loaded.items : [];
+			this.version = loaded.version || CURRENT_VERSION;
+			this.persist();
+		}
+	}
+
+	/**
+	 * Duplicates the current board
+	 */
+	duplicateCurrentBoard() {
+		const clone = {
+			id: `board-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+			title: `${this.title} (Copy)`,
+			context: this.context,
+			tiers: JSON.parse(JSON.stringify($state.snapshot(this.tiers))),
+			items: JSON.parse(JSON.stringify($state.snapshot(this.items))),
+			version: this.version
+		};
+
+		saveBoardToRegistry(clone);
+		this.switchBoard(clone.id);
+	}
+
+	/**
+	 * Deletes a board from the saved registry
+	 * @param {string} boardId
+	 */
+	deleteSavedBoard(boardId) {
+		deleteBoardFromRegistry(boardId);
+		if (this.id === boardId) {
+			const remaining = getBoardsRegistry();
+			if (remaining.length > 0) {
+				this.switchBoard(remaining[0].id);
+			} else {
+				this.resetBoard();
+			}
+		}
 	}
 
 	/**
@@ -339,18 +593,19 @@ class BoardStore {
 	importJson(jsonString) {
 		try {
 			const parsed = JSON.parse(jsonString);
-			if (
-				parsed &&
-				typeof parsed === 'object' &&
-				Array.isArray(parsed.tiers) &&
-				Array.isArray(parsed.items)
-			) {
-				this.title = parsed.title || 'Tier List';
-				this.context = parsed.context || '';
-				this.tiers = parsed.tiers;
-				this.items = parsed.items;
-				this.version = parsed.version || CURRENT_VERSION;
+			const sanitized = sanitizeBoard(parsed);
+			if (sanitized) {
+				this.id = sanitized.id || `board-${Date.now()}`;
+				this.title = sanitized.title || 'Tier List';
+				this.context = sanitized.context || '';
+				this.tiers = sanitized.tiers.length > 0 ? sanitized.tiers : createDefaultTiers();
+				this.items = sanitized.items;
+				this.version = sanitized.version || CURRENT_VERSION;
 				this.persist();
+
+				// Also auto-pipe imported items to card stash
+				cardStash.addBulkCards(this.items, this.context);
+
 				return true;
 			}
 		} catch (e) {

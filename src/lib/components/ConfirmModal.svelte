@@ -3,9 +3,9 @@
 
 	/**
 	 * @type {{
-	 *   open: boolean;
-	 *   title: string;
-	 *   message: string;
+	 *   open?: boolean;
+	 *   title?: string;
+	 *   message?: string;
 	 *   confirmLabel?: string;
 	 *   cancelLabel?: string;
 	 *   danger?: boolean;
@@ -14,7 +14,7 @@
 	 * }}
 	 */
 	let {
-		open = $bindable(false),
+		open = false,
 		title = 'Are you sure?',
 		message = '',
 		confirmLabel = 'Confirm',

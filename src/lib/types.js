@@ -4,6 +4,7 @@
  * @property {string} label - Display label (e.g. S, A, B, C, D, F)
  * @property {string} color - Hex color code (e.g. #ef4444)
  * @property {number} order - Ordering index in the tier list
+ * @property {string} [imageUrl] - Optional image / badge URL for the tier header
  */
 
 /**
@@ -33,6 +34,26 @@
  * @property {string} thumbnailUrl - Scaled down thumbnail URL
  * @property {string} imageUrl - Full resolution image URL
  * @property {string} sourceUrl - Source website URL
+ */
+
+/**
+ * @typedef {Object} BulkGeneratedItem
+ * @property {string} name - Entity display name
+ * @property {string} searchQuery - Search query optimized for finding official entity image
+ */
+
+/**
+ * @typedef {Object} DisambiguationResult
+ * @property {string} canonicalName - Normalized entity name
+ * @property {string} searchQuery - Search query for character/entity art
+ * @property {string} [category] - Entity category or franchise
+ */
+
+/**
+ * @typedef {Object} AutoRankEntry
+ * @property {string} itemId - Item ID
+ * @property {string} tierId - Target tier ID
+ * @property {string} [reason] - Rationale for tier placement
  */
 
 export {};

@@ -1,7 +1,7 @@
 <script>
 	import { dndzone } from 'svelte-dnd-action';
 	import { flip } from 'svelte/animate';
-	import { Layers } from 'lucide-svelte';
+	import { Layers, Trash2 } from 'lucide-svelte';
 	import TierCard from './TierCard.svelte';
 	import { board } from '#lib/stores/board.svelte.js';
 
@@ -35,6 +35,13 @@
 		unrankedItems = e.detail.items;
 		board.updateTierItems(null, unrankedItems);
 	}
+
+	function handleClearUnranked() {
+		if (confirm('Clear all unranked cards? Ranked cards will remain untouched on the board.')) {
+			board.items = board.items.filter((i) => i.tierId !== null);
+			board.persist();
+		}
+	}
 </script>
 
 <div class="mt-8 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/80 shadow-lg">
@@ -49,7 +56,20 @@
 				{unrankedItems.length}
 			</span>
 		</div>
-		<p class="hidden text-xs text-zinc-500 sm:block">Drag items into tiers above</p>
+		<div class="flex items-center gap-3">
+			{#if unrankedItems.length > 0}
+				<button
+					type="button"
+					class="flex cursor-pointer items-center gap-1 text-[11px] text-zinc-400 transition-colors hover:text-red-400"
+					onclick={handleClearUnranked}
+					title="Remove all unranked cards"
+				>
+					<Trash2 size={12} />
+					<span>Clear Unranked</span>
+				</button>
+			{/if}
+			<p class="hidden text-xs text-zinc-500 sm:block">Drag items into tiers above</p>
+		</div>
 	</div>
 
 	<!-- Droppable Zone -->

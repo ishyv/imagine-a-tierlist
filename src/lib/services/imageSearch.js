@@ -1,3 +1,5 @@
+import { getCachedSearchResults, cacheSearchResults } from '#lib/services/searchCache.js';
+
 /**
  * @typedef {import('#lib/types.js').ImageSearchResult} ImageSearchResult
  */
@@ -22,21 +24,36 @@ export function buildSearchQuery(itemName, boardContext = '') {
  * @typedef {Object} SearchResponse
  * @property {ImageSearchResult[]} results
  * @property {string} [query]
+ * @property {boolean} [fromCache]
  * @property {string} [error]
  * @property {string} [message]
  */
 
 /**
- * Searches for images using the backend endpoint
+ * Searches for images using local cache first, then backend endpoint
  * @param {string} query
+ * @param {boolean} [bypassCache]
  * @returns {Promise<SearchResponse>}
  */
-export async function searchImages(query) {
+export async function searchImages(query, bypassCache = false) {
 	const trimmed = (query || '').trim();
 	if (!trimmed) {
 		return { results: [], error: 'EMPTY_QUERY', message: 'Please enter a search term.' };
 	}
 
+	// 1. Check client-side LRU cache first (0ms latency, zero API calls)
+	if (!bypassCache) {
+		const cached = getCachedSearchResults(trimmed);
+		if (cached && cached.length > 0) {
+			return {
+				results: cached,
+				query: trimmed,
+				fromCache: true
+			};
+		}
+	}
+
+	// 2. Fetch from backend endpoint
 	try {
 		const res = await fetch(`/api/images?q=${encodeURIComponent(trimmed)}`);
 		const data = await res.json();
@@ -49,9 +66,17 @@ export async function searchImages(query) {
 			};
 		}
 
+		const results = Array.isArray(data.results) ? data.results : [];
+
+		// Cache successful results
+		if (results.length > 0) {
+			cacheSearchResults(trimmed, results);
+		}
+
 		return {
-			results: Array.isArray(data.results) ? data.results : [],
-			query: data.query || trimmed
+			results,
+			query: data.query || trimmed,
+			fromCache: false
 		};
 	} catch (e) {
 		console.error('Image search network error:', e);

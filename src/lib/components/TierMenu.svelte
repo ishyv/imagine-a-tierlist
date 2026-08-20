@@ -16,39 +16,79 @@
 	let label = $state(tier.label);
 	/* svelte-ignore state_referenced_locally */
 	let color = $state(tier.color);
+	/* svelte-ignore state_referenced_locally */
+	let imageUrl = $state(tier.imageUrl || '');
+
+	const BADGE_PRESETS = [
+		{
+			name: 'Challenger',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/challenger.png'
+		},
+		{
+			name: 'Grandmaster',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/grandmaster.png'
+		},
+		{
+			name: 'Master',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/master.png'
+		},
+		{
+			name: 'Diamond',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/diamond.png'
+		},
+		{
+			name: 'Platinum',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/platinum.png'
+		},
+		{
+			name: 'Gold',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/gold.png'
+		},
+		{
+			name: 'Silver',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/silver.png'
+		},
+		{
+			name: 'Bronze',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/bronze.png'
+		},
+		{
+			name: 'Iron',
+			url: 'https://raw.githubusercontent.com/MingCut/lol-rank-icons/main/src/assets/iron.png'
+		}
+	];
 
 	function handleSave() {
 		board.updateTier(tier.id, {
 			label: label.trim() || tier.label,
-			color
+			color,
+			imageUrl: imageUrl.trim() || undefined
 		});
 		onclose();
 	}
 
 	function handleMoveUp() {
-		board.moveTier(tier.id, 'up');
+		board.moveTierUp(tier.id);
 		onclose();
 	}
 
 	function handleMoveDown() {
-		board.moveTier(tier.id, 'down');
+		board.moveTierDown(tier.id);
 		onclose();
 	}
 
 	function handleAddAbove() {
-		const currentIndex = board.tiers.findIndex((/** @type {import('#lib/types.js').Tier} */ t) => t.id === tier.id);
-		const prevTierId = currentIndex > 0 ? board.tiers[currentIndex - 1].id : null;
-		board.addTier('NEW', '#3b82f6', prevTierId);
+		board.addTierAbove(tier.id, 'NEW', '#3b82f6');
 		onclose();
 	}
 
 	function handleAddBelow() {
-		board.addTier('NEW', '#3b82f6', tier.id);
+		board.addTierBelow(tier.id, 'NEW', '#3b82f6');
 		onclose();
 	}
 
 	function handleClearCards() {
-		board.clearTierCards(tier.id);
+		board.clearTier(tier.id);
 		onclose();
 	}
 
@@ -69,18 +109,19 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-	class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+	class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
 	role="dialog"
 	aria-modal="true"
+	aria-label="Edit Tier"
 >
 	<div
-		class="relative w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden p-5 text-zinc-100 animate-in fade-in zoom-in-95 duration-150"
+		class="animate-in fade-in zoom-in-95 relative w-full max-w-sm overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 p-5 text-zinc-100 shadow-2xl duration-150"
 	>
-		<div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+		<div class="flex items-center justify-between border-b border-zinc-800 pb-3">
 			<h3 class="text-base font-semibold text-zinc-100">Edit Tier</h3>
 			<button
 				type="button"
-				class="text-zinc-400 hover:text-zinc-200 p-1 rounded-lg hover:bg-zinc-800 transition-colors"
+				class="rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
 				onclick={onclose}
 				aria-label="Close"
 			>
@@ -91,29 +132,31 @@
 		<div class="mt-4 space-y-4">
 			<!-- Tier Label -->
 			<div>
-				<label for="tier-label-input" class="block text-xs font-medium text-zinc-400 mb-1.5">Tier Label</label>
+				<label for="tier-label-input" class="mb-1.5 block text-xs font-medium text-zinc-400"
+					>Tier Label</label
+				>
 				<input
 					id="tier-label-input"
 					type="text"
 					bind:value={label}
 					maxlength="15"
-					class="w-full px-3 py-2 text-sm bg-zinc-950 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+					class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
 					placeholder="e.g. S, A, God Tier"
 				/>
 			</div>
 
 			<!-- Color Selection -->
 			<div>
-				<div class="flex items-center justify-between mb-1.5">
+				<div class="mb-1.5 flex items-center justify-between">
 					<span class="text-xs font-medium text-zinc-400">Color</span>
 					<div class="flex items-center gap-1.5">
 						<input
 							type="color"
 							bind:value={color}
-							class="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+							class="h-5 w-5 cursor-pointer rounded border-0 bg-transparent"
 							title="Custom color"
 						/>
-						<span class="text-[11px] font-mono text-zinc-500">{color}</span>
+						<span class="font-mono text-[11px] text-zinc-500">{color}</span>
 					</div>
 				</div>
 
@@ -121,9 +164,9 @@
 					{#each TIER_COLOR_PALETTE as paletteColor (paletteColor)}
 						<button
 							type="button"
-							class="relative h-7 rounded-md transition-transform hover:scale-105 cursor-pointer flex items-center justify-center border {color.toLowerCase() ===
+							class="relative flex h-7 cursor-pointer items-center justify-center rounded-md border transition-transform hover:scale-105 {color.toLowerCase() ===
 							paletteColor.toLowerCase()
-								? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900 border-white'
+								? 'border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900'
 								: 'border-transparent'}"
 							style="background-color: {paletteColor}"
 							onclick={() => (color = paletteColor)}
@@ -137,13 +180,65 @@
 				</div>
 			</div>
 
+			<!-- Tier Image / Badge Icon -->
+			<div class="space-y-2 border-t border-zinc-800 pt-3">
+				<div class="flex items-center justify-between">
+					<span class="text-xs font-medium text-zinc-400">Badge Icon / Image (Optional)</span>
+					{#if imageUrl}
+						<button
+							type="button"
+							class="cursor-pointer text-[11px] text-red-400 hover:underline"
+							onclick={() => (imageUrl = '')}
+						>
+							Remove Image
+						</button>
+					{/if}
+				</div>
+
+				<input
+					type="url"
+					bind:value={imageUrl}
+					placeholder="Paste custom badge image URL..."
+					class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-hidden"
+				/>
+
+				<!-- Preset Badges -->
+				<div>
+					<span class="text-[10px] tracking-wider text-zinc-500 uppercase">Competitive Ranks</span>
+					<div class="mt-1 flex flex-wrap gap-1.5">
+						{#each BADGE_PRESETS as preset (preset.name)}
+							<button
+								type="button"
+								class="group flex cursor-pointer items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-blue-500/50 hover:bg-blue-950/20 {imageUrl ===
+								preset.url
+									? 'border-blue-500 bg-blue-500/10 text-blue-300'
+									: ''}"
+								onclick={() => {
+									imageUrl = preset.url;
+									label = preset.name;
+								}}
+								title={preset.name}
+							>
+								<img
+									src={preset.url}
+									alt=""
+									referrerpolicy="no-referrer"
+									class="h-4 w-4 object-contain"
+								/>
+								<span>{preset.name}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+			</div>
+
 			<!-- Tier Actions -->
-			<div class="pt-2 border-t border-zinc-800 space-y-1.5">
+			<div class="space-y-1.5 border-t border-zinc-800 pt-2">
 				<div class="grid grid-cols-2 gap-2">
 					<button
 						type="button"
 						disabled={isFirst}
-						class="px-2.5 py-1.5 text-xs font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700 disabled:opacity-40 disabled:pointer-events-none rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+						class="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-zinc-800/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 disabled:pointer-events-none disabled:opacity-40"
 						onclick={handleMoveUp}
 					>
 						<ArrowUp size={13} />
@@ -152,7 +247,7 @@
 					<button
 						type="button"
 						disabled={isLast}
-						class="px-2.5 py-1.5 text-xs font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700 disabled:opacity-40 disabled:pointer-events-none rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+						class="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-zinc-800/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 disabled:pointer-events-none disabled:opacity-40"
 						onclick={handleMoveDown}
 					>
 						<ArrowDown size={13} />
@@ -163,7 +258,7 @@
 				<div class="grid grid-cols-2 gap-2">
 					<button
 						type="button"
-						class="px-2.5 py-1.5 text-xs font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+						class="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-zinc-800/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
 						onclick={handleAddAbove}
 					>
 						<Plus size={13} />
@@ -171,7 +266,7 @@
 					</button>
 					<button
 						type="button"
-						class="px-2.5 py-1.5 text-xs font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+						class="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-zinc-800/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
 						onclick={handleAddBelow}
 					>
 						<Plus size={13} />
@@ -182,7 +277,7 @@
 				<div class="grid grid-cols-2 gap-2 pt-1">
 					<button
 						type="button"
-						class="px-2.5 py-1.5 text-xs font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+						class="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-zinc-800/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
 						onclick={handleClearCards}
 						title="Return all items in this tier to Unranked"
 					>
@@ -191,7 +286,7 @@
 					</button>
 					<button
 						type="button"
-						class="px-2.5 py-1.5 text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+						class="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
 						onclick={handleDelete}
 					>
 						<Trash2 size={13} />
@@ -205,14 +300,14 @@
 		<div class="mt-6 flex justify-end gap-2">
 			<button
 				type="button"
-				class="px-3.5 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors cursor-pointer"
+				class="cursor-pointer rounded-lg bg-zinc-800 px-3.5 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
 				onclick={onclose}
 			>
 				Cancel
 			</button>
 			<button
 				type="button"
-				class="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors cursor-pointer"
+				class="cursor-pointer rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
 				onclick={handleSave}
 			>
 				Save Changes
