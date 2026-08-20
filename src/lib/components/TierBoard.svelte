@@ -88,7 +88,7 @@
 					'hyv'
 						? 'border-accent bg-accent/15 text-accent hover:bg-accent/25 hover:text-accent-strong'
 						: 'rounded-lg bg-blue-600 font-semibold text-white hover:bg-blue-500'}"
-					onclick={() => board.addTier('S', '#FFD000')}
+					onclick={() => board.addTier('S', themeStore.current === 'hyv' ? '#FFD000' : '#ef4444')}
 				>
 					<Plus size={13} />
 					<span class={themeStore.current === 'hyv' ? 'tracking-wide uppercase' : ''}>

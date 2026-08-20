@@ -54,12 +54,11 @@ export const LEGACY_COLOR_MIGRATION = {
  * Migrates a tier color to the modern gaming prestige progression
  * @param {string} label
  * @param {string} color
- * @param {number} version
  * @returns {string}
  */
-export function normalizeTierColor(label, color, version) {
-	if (version >= CURRENT_VERSION && color) {
-		return color;
+export function normalizeTierColor(label, color) {
+	if (color && typeof color === 'string' && color.trim()) {
+		return color.trim();
 	}
 
 	const normalizedLabel = (label || '').trim().toLowerCase();
@@ -67,12 +66,7 @@ export function normalizeTierColor(label, color, version) {
 		return PRESTIGE_TIER_COLORS[/** @type {keyof typeof PRESTIGE_TIER_COLORS} */ (normalizedLabel)];
 	}
 
-	const lowerColor = (color || '').toLowerCase();
-	if (lowerColor in LEGACY_COLOR_MIGRATION) {
-		return LEGACY_COLOR_MIGRATION[/** @type {keyof typeof LEGACY_COLOR_MIGRATION} */ (lowerColor)];
-	}
-
-	return color || '#0070DD';
+	return '#FFD000';
 }
 
 /**
@@ -93,8 +87,6 @@ export function normalizeTierColor(label, color, version) {
 export function sanitizeBoard(raw) {
 	if (!raw || typeof raw !== 'object') return null;
 
-	const boardVersion = typeof raw.version === 'number' ? raw.version : 1;
-
 	const validTiers = Array.isArray(raw.tiers)
 		? raw.tiers
 				.filter(/** @param {any} t */ (t) => t && typeof t === 'object' && typeof t.id === 'string')
@@ -102,7 +94,7 @@ export function sanitizeBoard(raw) {
 					/** @param {any} t @param {number} idx */ (t, idx) => {
 						const label = String(t.label || 'Tier').slice(0, 30);
 						const initialColor = String(t.color || '#0070DD');
-						const migratedColor = normalizeTierColor(label, initialColor, boardVersion);
+						const migratedColor = normalizeTierColor(label, initialColor);
 
 						return {
 							id: String(t.id),

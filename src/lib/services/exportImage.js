@@ -4,6 +4,9 @@
  * Synchronized with the hyvui operator aesthetic (near-black palette, IBM Plex Mono & Serif typography).
  */
 
+import { getTierColor } from '#lib/stores/board.svelte.js';
+import { themeStore } from '#lib/stores/theme.svelte.js';
+
 /**
  * Calculates luminance of a hex color to determine text color
  * @param {string} hexColor
@@ -45,18 +48,29 @@ function loadImage(url) {
 		const img = new window.Image();
 		img.crossOrigin = 'anonymous';
 
+		let isSettled = false;
+
 		const timer = setTimeout(() => {
-			resolve(null);
+			if (!isSettled) {
+				isSettled = true;
+				resolve(null);
+			}
 		}, 3500); // 3.5s timeout per image
 
 		img.onload = () => {
-			clearTimeout(timer);
-			resolve(img);
+			if (!isSettled) {
+				isSettled = true;
+				clearTimeout(timer);
+				resolve(img);
+			}
 		};
 
 		img.onerror = () => {
-			clearTimeout(timer);
-			resolve(null);
+			if (!isSettled) {
+				isSettled = true;
+				clearTimeout(timer);
+				resolve(null);
+			}
 		};
 
 		img.src = url;
@@ -67,9 +81,10 @@ function loadImage(url) {
  * Exports board as high-resolution PNG file download
  * @param {import('#lib/types.js').Board} board
  * @param {(progress: number) => void} [onProgress]
+ * @param {'hyv' | 'classic' | string} [theme]
  * @returns {Promise<boolean>}
  */
-export async function exportBoardAsPng(board, onProgress) {
+export async function exportBoardAsPng(board, onProgress, theme = themeStore.current) {
 	if (typeof window === 'undefined') return false;
 
 	const tiers = board.tiers || [];
@@ -98,9 +113,9 @@ export async function exportBoardAsPng(board, onProgress) {
 	});
 
 	const totalTiersHeight = tierHeights.reduce((acc, h) => acc + h + 2, 0);
-	const boardHeight = headerHeight + totalTiersHeight + footerHeight + padding * 2;
+	const boardHeight = padding * 2 + headerHeight + totalTiersHeight + footerHeight;
 
-	// Create offscreen canvas
+	// Create canvas
 	const canvas = document.createElement('canvas');
 	canvas.width = boardWidth * scale;
 	canvas.height = boardHeight * scale;
@@ -110,43 +125,39 @@ export async function exportBoardAsPng(board, onProgress) {
 
 	ctx.scale(scale, scale);
 
-	// 1. Background
-	ctx.fillStyle = '#08090b';
+	// 1. Render Background
+	ctx.fillStyle = theme === 'classic' ? '#09090b' : '#08090b';
 	ctx.fillRect(0, 0, boardWidth, boardHeight);
 
-	// 2. Header Index & Title
-	ctx.fillStyle = '#c79c57';
-	ctx.font = '500 11px "IBM Plex Mono", Menlo, Consolas, monospace';
-	ctx.fillText('01 // MATRIX CLASSIFICATION', padding, padding + 16);
-
-	ctx.fillStyle = '#f0e8da';
-	ctx.font = 'normal 24px "ET Book", "Iowan Old Style", "Palatino Linotype", "Georgia", serif';
-	ctx.fillText(board.title || 'Tier List', padding, padding + 44);
+	// 2. Render Header
+	ctx.fillStyle = '#ffffff';
+	ctx.font =
+		theme === 'classic'
+			? 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+			: 'normal 26px "ET Book", "Iowan Old Style", "Palatino Linotype", "Georgia", serif';
+	ctx.textAlign = 'left';
+	ctx.textBaseline = 'middle';
+	ctx.fillText(board.title || 'Tier List', padding, padding + 22);
 
 	if (board.context) {
-		ctx.fillStyle = '#a79d8b';
+		ctx.fillStyle = theme === 'classic' ? '#a1a1aa' : '#9ba3af';
 		ctx.font = '500 11px "IBM Plex Mono", Menlo, Consolas, monospace';
-		ctx.fillText(`SCOPE: ${board.context.toUpperCase()}`, padding, padding + 62);
+		ctx.fillText(`// CONTEXT: ${board.context.toUpperCase()}`, padding, padding + 48);
 	}
 
-	// 3. Preload all ranked images and tier badge images
-	const rankedItems = (board.items || []).filter((i) => i && i.tierId);
-	let loadedCount = 0;
-	const totalImages = rankedItems.length + tiers.filter((t) => t.imageUrl).length;
-
-	/** @type {Map<string, HTMLImageElement | null>} */
-	const imageMap = new Map();
-	/** @type {Map<string, HTMLImageElement | null>} */
+	// 3. Preload all Item & Tier Badge images safely with timeout
 	const tierImageMap = new Map();
-
 	for (const tier of tiers) {
 		if (tier.imageUrl) {
 			const img = await loadImage(tier.imageUrl);
 			tierImageMap.set(tier.id, img);
-			loadedCount++;
-			onProgress?.(totalImages > 0 ? (loadedCount / totalImages) * 100 : 100);
 		}
 	}
+
+	const rankedItems = (board.items || []).filter((i) => i && i.tierId);
+	const totalImages = rankedItems.length + tiers.filter((t) => t.imageUrl).length;
+	let loadedCount = 0;
+	const imageMap = new Map();
 
 	for (const item of rankedItems) {
 		if (item.imageUrl) {
@@ -163,19 +174,20 @@ export async function exportBoardAsPng(board, onProgress) {
 	for (let tIdx = 0; tIdx < tiers.length; tIdx++) {
 		const tier = tiers[tIdx];
 		const tHeight = tierHeights[tIdx];
+		const tierColor = getTierColor(tier, theme);
 		const tierItems = (board.items || [])
 			.filter((i) => i && i.tierId === tier.id)
 			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
 		// Row background
-		ctx.fillStyle = '#0d1014';
+		ctx.fillStyle = theme === 'classic' ? '#18181b' : '#0d1014';
 		ctx.fillRect(padding, currentY, boardWidth - padding * 2, tHeight);
 
 		// Left Tier Label Block
-		ctx.fillStyle = tier.color || '#4a7c87';
+		ctx.fillStyle = tierColor;
 		ctx.fillRect(padding, currentY, tierHeaderWidth, tHeight);
 
-		const textColor = getContrastTextColor(tier.color);
+		const textColor = getContrastTextColor(tierColor);
 		const tierImg = tierImageMap.get(tier.id);
 
 		// Top tier index in block

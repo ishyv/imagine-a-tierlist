@@ -10,7 +10,7 @@
 		Check,
 		Layers
 	} from 'lucide-svelte';
-	import { board } from '#lib/stores/board.svelte.js';
+	import { board, getTierColor } from '#lib/stores/board.svelte.js';
 	import { themeStore } from '#lib/stores/theme.svelte.js';
 	import { getContrastTextColor } from '#lib/services/exportImage.js';
 	import CornerBrackets from './ambient/CornerBrackets.svelte';
@@ -35,6 +35,9 @@
 	// Find the current tier object for the zoomed item
 	const currentTier = $derived(
 		item && item.tierId ? board.tiers.find((t) => t.id === item.tierId) : null
+	);
+	const currentTierColor = $derived(
+		currentTier ? getTierColor(currentTier, themeStore.current) : ''
 	);
 
 	// Reset rename and error states on item change
@@ -333,8 +336,8 @@
 										? 'rounded-lg font-semibold'
 										: ''}"
 									style="
-										background-color: {currentTier.color};
-										color: {getContrastTextColor(currentTier.color)};
+										background-color: {currentTierColor};
+										color: {getContrastTextColor(currentTierColor)};
 										border-color: rgba(255,255,255,0.2);
 									"
 								>
@@ -367,6 +370,7 @@
 						<div class="flex flex-wrap gap-1.5 pt-1">
 							{#each board.tiers as t (t.id)}
 								{@const isSelected = item.tierId === t.id}
+								{@const swatchColor = getTierColor(t, themeStore.current)}
 								<button
 									type="button"
 									class="flex h-8 min-w-8 cursor-pointer items-center justify-center border px-2 text-xs font-semibold transition-all duration-150 active:scale-95 {themeStore.current ===
@@ -374,8 +378,8 @@
 										? 'rounded-lg'
 										: ''} {isSelected ? 'ring-2 ring-accent' : 'opacity-85 hover:opacity-100'}"
 									style="
-										background-color: {t.color};
-										color: {getContrastTextColor(t.color)};
+										background-color: {swatchColor};
+										color: {getContrastTextColor(swatchColor)};
 										border-color: rgba(255,255,255,0.2);
 									"
 									onclick={() => board.setZoomedItemTier(t.id)}

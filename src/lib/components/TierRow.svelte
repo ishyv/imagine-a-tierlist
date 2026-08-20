@@ -4,7 +4,7 @@
 	import { flip } from 'svelte/animate';
 	import TierCard from './TierCard.svelte';
 	import TierMenu from './TierMenu.svelte';
-	import { board } from '#lib/stores/board.svelte.js';
+	import { board, getTierColor } from '#lib/stores/board.svelte.js';
 	import { themeStore } from '#lib/stores/theme.svelte.js';
 	import { getContrastTextColor } from '#lib/services/exportImage.js';
 
@@ -31,7 +31,8 @@
 	});
 	/* eslint-enable svelte/prefer-writable-derived */
 
-	const labelTextColor = $derived(getContrastTextColor(tier.color));
+	const tierColor = $derived(getTierColor(tier, themeStore.current));
+	const labelTextColor = $derived(getContrastTextColor(tierColor));
 	const formattedIndex = $derived(index.toString().padStart(2, '0'));
 
 	/**
@@ -63,7 +64,7 @@
 			background:
 				linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, transparent 8%),
 				linear-gradient(0deg, rgba(0, 0, 0, 0.45) 0%, transparent 12%),
-				{tier.color};
+				{tierColor};
 		"
 	>
 		<!-- Top Inset Highlight & Index in Hyv mode -->

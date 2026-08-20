@@ -1,6 +1,11 @@
 <script>
 	import { ArrowUp, ArrowDown, Plus, Trash2, Eraser, Check } from 'lucide-svelte';
-	import { board, TIER_COLOR_PALETTE } from '#lib/stores/board.svelte.js';
+	import {
+		board,
+		CLASSIC_COLOR_PALETTE,
+		HYV_COLOR_PALETTE,
+		getTierColor
+	} from '#lib/stores/board.svelte.js';
 	import { themeStore } from '#lib/stores/theme.svelte.js';
 	import CornerBrackets from './ambient/CornerBrackets.svelte';
 
@@ -17,9 +22,13 @@
 	/* svelte-ignore state_referenced_locally */
 	let label = $state(tier.label);
 	/* svelte-ignore state_referenced_locally */
-	let color = $state(tier.color);
+	let color = $state(getTierColor(tier, themeStore.current));
 	/* svelte-ignore state_referenced_locally */
 	let imageUrl = $state(tier.imageUrl || '');
+
+	const activePalette = $derived(
+		themeStore.current === 'hyv' ? HYV_COLOR_PALETTE : CLASSIC_COLOR_PALETTE
+	);
 
 	const BADGE_PRESETS = [
 		{
@@ -80,12 +89,12 @@
 	}
 
 	function handleAddAbove() {
-		board.addTierAbove(tier.id, 'NEW', '#0070DD');
+		board.addTierAbove(tier.id, 'NEW', themeStore.current === 'hyv' ? '#0070DD' : '#3b82f6');
 		onclose();
 	}
 
 	function handleAddBelow() {
-		board.addTierBelow(tier.id, 'NEW', '#0070DD');
+		board.addTierBelow(tier.id, 'NEW', themeStore.current === 'hyv' ? '#0070DD' : '#3b82f6');
 		onclose();
 	}
 
@@ -197,7 +206,7 @@
 				</div>
 
 				<div class="grid grid-cols-5 gap-1.5">
-					{#each TIER_COLOR_PALETTE as paletteColor (paletteColor)}
+					{#each activePalette as paletteColor (paletteColor)}
 						<button
 							type="button"
 							class="relative flex h-6 cursor-pointer items-center justify-center border transition-all {themeStore.current ===
