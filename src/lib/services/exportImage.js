@@ -1,13 +1,13 @@
 /**
  * Tier List PNG Export Service
  * Renders the active tier list into a crisp, high-resolution PNG image on an HTML5 Canvas.
- * No heavy external dependencies; works completely client-side in all modern browsers.
+ * Synchronized with the hyvui operator aesthetic (near-black palette, IBM Plex Mono & Serif typography).
  */
 
 /**
  * Calculates luminance of a hex color to determine text color
  * @param {string} hexColor
- * @returns {'#ffffff' | '#09090b'}
+ * @returns {'#ffffff' | '#08090b'}
  */
 export function getContrastTextColor(hexColor) {
 	if (!hexColor) return '#ffffff';
@@ -27,7 +27,7 @@ export function getContrastTextColor(hexColor) {
 
 	// Relative luminance calculation per ITU-R BT.709
 	const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-	return luminance > 0.62 ? '#09090b' : '#ffffff';
+	return luminance > 0.62 ? '#08090b' : '#ffffff';
 }
 
 /**
@@ -64,29 +64,6 @@ function loadImage(url) {
 }
 
 /**
- * Draws rounded rectangle on 2D context
- * @param {CanvasRenderingContext2D} ctx
- * @param {number} x
- * @param {number} y
- * @param {number} width
- * @param {number} height
- * @param {number} radius
- */
-function roundRect(ctx, x, y, width, height, radius) {
-	ctx.beginPath();
-	ctx.moveTo(x + radius, y);
-	ctx.lineTo(x + width - radius, y);
-	ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-	ctx.lineTo(x + width, y + height - radius);
-	ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-	ctx.lineTo(x + radius, y + height);
-	ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-	ctx.lineTo(x, y + radius);
-	ctx.quadraticCurveTo(x, y, x + radius, y);
-	ctx.closePath();
-}
-
-/**
  * Exports board as high-resolution PNG file download
  * @param {import('#lib/types.js').Board} board
  * @param {(progress: number) => void} [onProgress]
@@ -98,11 +75,11 @@ export async function exportBoardAsPng(board, onProgress) {
 	const tiers = board.tiers || [];
 	if (tiers.length === 0) return false;
 
-	// Calculate layout dimensions (at standard 1x scale, then scale to 2x for retina sharpness)
+	// Calculate layout dimensions (scale 2 for retina sharpness)
 	const scale = 2;
 	const boardWidth = 1000;
 	const padding = 24;
-	const headerHeight = 70;
+	const headerHeight = 76;
 	const footerHeight = 40;
 	const tierHeaderWidth = 110;
 	const cardSize = 90;
@@ -134,18 +111,22 @@ export async function exportBoardAsPng(board, onProgress) {
 	ctx.scale(scale, scale);
 
 	// 1. Background
-	ctx.fillStyle = '#09090b';
+	ctx.fillStyle = '#08090b';
 	ctx.fillRect(0, 0, boardWidth, boardHeight);
 
-	// 2. Header Title & Context
-	ctx.fillStyle = '#f4f4f5';
-	ctx.font = 'bold 22px system-ui, -apple-system, sans-serif';
-	ctx.fillText(board.title || 'Tier List', padding, padding + 28);
+	// 2. Header Index & Title
+	ctx.fillStyle = '#c79c57';
+	ctx.font = '500 11px "IBM Plex Mono", Menlo, Consolas, monospace';
+	ctx.fillText('01 // MATRIX CLASSIFICATION', padding, padding + 16);
+
+	ctx.fillStyle = '#f0e8da';
+	ctx.font = 'normal 24px "ET Book", "Iowan Old Style", "Palatino Linotype", "Georgia", serif';
+	ctx.fillText(board.title || 'Tier List', padding, padding + 44);
 
 	if (board.context) {
-		ctx.fillStyle = '#a1a1aa';
-		ctx.font = '500 13px system-ui, -apple-system, sans-serif';
-		ctx.fillText(`Context: ${board.context}`, padding, padding + 48);
+		ctx.fillStyle = '#a79d8b';
+		ctx.font = '500 11px "IBM Plex Mono", Menlo, Consolas, monospace';
+		ctx.fillText(`SCOPE: ${board.context.toUpperCase()}`, padding, padding + 62);
 	}
 
 	// 3. Preload all ranked images and tier badge images
@@ -187,27 +168,34 @@ export async function exportBoardAsPng(board, onProgress) {
 			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
 		// Row background
-		ctx.fillStyle = '#18181b';
+		ctx.fillStyle = '#0d1014';
 		ctx.fillRect(padding, currentY, boardWidth - padding * 2, tHeight);
 
 		// Left Tier Label Block
-		ctx.fillStyle = tier.color || '#3b82f6';
+		ctx.fillStyle = tier.color || '#4a7c87';
 		ctx.fillRect(padding, currentY, tierHeaderWidth, tHeight);
 
 		const textColor = getContrastTextColor(tier.color);
 		const tierImg = tierImageMap.get(tier.id);
 
+		// Top tier index in block
+		ctx.fillStyle = textColor;
+		ctx.font = '500 9px "IBM Plex Mono", Menlo, Consolas, monospace';
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'top';
+		ctx.fillText((tIdx + 1).toString().padStart(2, '0') + ' //', padding + 8, currentY + 6);
+
 		if (tierImg) {
 			// Draw Badge Icon centered
-			const iconSize = Math.min(52, tHeight - 24);
+			const iconSize = Math.min(50, tHeight - 28);
 			const iconX = padding + (tierHeaderWidth - iconSize) / 2;
-			const iconY = currentY + (tHeight - iconSize) / 2 - (tier.label ? 6 : 0);
+			const iconY = currentY + (tHeight - iconSize) / 2 - (tier.label ? 4 : 0);
 
 			ctx.drawImage(tierImg, iconX, iconY, iconSize, iconSize);
 
 			if (tier.label && tier.label !== ' ') {
 				ctx.fillStyle = textColor;
-				ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+				ctx.font = '500 10px "IBM Plex Mono", Menlo, Consolas, monospace';
 				ctx.textAlign = 'center';
 				ctx.textBaseline = 'top';
 				ctx.fillText(
@@ -218,9 +206,9 @@ export async function exportBoardAsPng(board, onProgress) {
 				);
 			}
 		} else {
-			// Tier Label Text with dynamic high-contrast color
+			// Tier Label Text
 			ctx.fillStyle = textColor;
-			ctx.font = 'bold 18px system-ui, -apple-system, sans-serif';
+			ctx.font = 'normal 20px "ET Book", "Iowan Old Style", "Palatino Linotype", "Georgia", serif';
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'middle';
 
@@ -245,14 +233,13 @@ export async function exportBoardAsPng(board, onProgress) {
 			const img = imageMap.get(item.id);
 
 			// Card Box Background
-			ctx.fillStyle = '#27272a';
-			roundRect(ctx, cardX, cardY, cardSize, cardSize, 6);
-			ctx.fill();
+			ctx.fillStyle = '#12151a';
+			ctx.fillRect(cardX, cardY, cardSize, cardSize);
 
 			if (img) {
-				// Draw cropped square image
 				ctx.save();
-				roundRect(ctx, cardX, cardY, cardSize, cardSize, 6);
+				ctx.beginPath();
+				ctx.rect(cardX, cardY, cardSize, cardSize);
 				ctx.clip();
 
 				const aspect = img.width / img.height;
@@ -274,22 +261,32 @@ export async function exportBoardAsPng(board, onProgress) {
 				// Dark gradient overlay for text readability
 				const grad = ctx.createLinearGradient(
 					cardX,
-					cardY + cardSize - 28,
+					cardY + cardSize - 26,
 					cardX,
 					cardY + cardSize
 				);
-				grad.addColorStop(0, 'rgba(0,0,0,0)');
-				grad.addColorStop(1, 'rgba(0,0,0,0.88)');
+				grad.addColorStop(0, 'rgba(8,9,11,0)');
+				grad.addColorStop(1, 'rgba(8,9,11,0.92)');
 				ctx.fillStyle = grad;
-				ctx.fillRect(cardX, cardY + cardSize - 28, cardSize, 28);
+				ctx.fillRect(cardX, cardY + cardSize - 26, cardSize, 26);
 
 				ctx.restore();
 			}
 
+			// 1px border stroke around card
+			ctx.strokeStyle = 'rgba(186, 157, 108, 0.2)';
+			ctx.lineWidth = 1;
+			ctx.strokeRect(cardX, cardY, cardSize, cardSize);
+
 			// Card Name text at bottom
-			ctx.fillStyle = '#ffffff';
-			ctx.font = '600 10px system-ui, -apple-system, sans-serif';
-			ctx.fillText(item.name || '', cardX + 5, cardY + cardSize - 6, cardSize - 10);
+			ctx.fillStyle = '#f0e8da';
+			ctx.font = '500 9px "IBM Plex Mono", Menlo, Consolas, monospace';
+			ctx.fillText(
+				item.name ? item.name.toLowerCase() : '',
+				cardX + 4,
+				cardY + cardSize - 5,
+				cardSize - 8
+			);
 
 			// Next card position
 			colIndex++;
@@ -306,14 +303,10 @@ export async function exportBoardAsPng(board, onProgress) {
 	}
 
 	// 5. Footer Watermark
-	ctx.fillStyle = '#71717a';
-	ctx.font = '500 11px system-ui, -apple-system, sans-serif';
+	ctx.fillStyle = '#7e7568';
+	ctx.font = '500 10px "IBM Plex Mono", Menlo, Consolas, monospace';
 	ctx.textAlign = 'right';
-	ctx.fillText(
-		'Made with Imagine a Tier List, By Hyvnt',
-		boardWidth - padding,
-		boardHeight - padding + 8
-	);
+	ctx.fillText('IMAGINE A TIER LIST // BY HYVNT', boardWidth - padding, boardHeight - padding + 8);
 
 	// Convert canvas to blob & trigger download
 	return new Promise((resolve) => {

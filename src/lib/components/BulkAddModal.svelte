@@ -1,7 +1,6 @@
 <script>
 	import {
 		Sparkles,
-		X,
 		Loader2,
 		AlertCircle,
 		CheckSquare,
@@ -12,7 +11,10 @@
 		Search
 	} from 'lucide-svelte';
 	import { board } from '#lib/stores/board.svelte.js';
+	import { themeStore } from '#lib/stores/theme.svelte.js';
 	import { fetchBulkItems, resolveBatchImages } from '#lib/services/ai.js';
+	import CornerBrackets from './ambient/CornerBrackets.svelte';
+	import ScanBand from './ambient/ScanBand.svelte';
 
 	/**
 	 * @type {{
@@ -85,7 +87,7 @@
 		const res = await fetchBulkItems(trimmed, board.context, existingNames, count);
 
 		if (res.error || !res.items || res.items.length === 0) {
-			error = res.message || 'Failed to generate items. Please try a different prompt.';
+			error = res.message || 'Failed to generate items. Please refine prompt.';
 			step = 'input';
 			return;
 		}
@@ -100,21 +102,20 @@
 	}
 
 	/**
-	 * Step 1B: Parse plain text lines into candidate items
+	 * Step 1B: Parse plain text list (one per line)
 	 */
 	function handleParseTextList() {
 		const lines = rawTextList
-			.split(/\r?\n/)
+			.split('\n')
 			.map((l) => l.trim())
 			.filter((l) => l.length > 0);
 
 		if (lines.length === 0) {
-			error = 'Please paste or type at least one item (one per line).';
+			error = 'Please enter at least one item name.';
 			return;
 		}
 
-		const uniqueNames = Array.from(new Set(lines));
-		candidateItems = uniqueNames.slice(0, 200).map((name) => ({
+		candidateItems = lines.map((name) => ({
 			name,
 			searchQuery: board.context ? `${name} ${board.context} official art` : `${name} official art`,
 			selected: true
@@ -124,11 +125,15 @@
 	}
 
 	function handleSelectAll() {
-		candidateItems = candidateItems.map((item) => ({ ...item, selected: true }));
+		for (const item of candidateItems) {
+			item.selected = true;
+		}
 	}
 
 	function handleDeselectAll() {
-		candidateItems = candidateItems.map((item) => ({ ...item, selected: false }));
+		for (const item of candidateItems) {
+			item.selected = false;
+		}
 	}
 
 	/**
@@ -136,41 +141,42 @@
 	 */
 	function toggleItemByName(name) {
 		const item = candidateItems.find((i) => i.name === name);
-		if (item) item.selected = !item.selected;
+		if (item) {
+			item.selected = !item.selected;
+		}
 	}
 
 	/**
-	 * Step 2: Fetch images and add to board
+	 * Step 2: Fetch images in batch and insert to board
 	 */
-	async function handleAddSelectedItems() {
+	async function handleIngestCards() {
 		const selected = candidateItems.filter((i) => i.selected);
 		if (selected.length === 0) return;
 
 		step = 'fetching_images';
-		error = '';
 		progress = { current: 0, total: selected.length, currentItemName: '' };
 
-		try {
-			const resolved = await resolveBatchImages(selected, (p) => {
-				progress = p;
-			});
+		const results = await resolveBatchImages(
+			selected,
+			(/** @type {{ current: number; total: number; currentItemName: string }} */ prog) => {
+				progress = prog;
+			},
+			5
+		);
 
-			board.addMultipleItems(resolved);
-
-			// Done! Close modal
-			onclose();
-		} catch (e) {
-			console.error('Failed to batch resolve images:', e);
-			error = 'An error occurred while fetching images. Some cards may not have been created.';
-			step = 'review';
+		// Add cards to unranked holding pool
+		for (const card of results) {
+			board.addItem(card.name, card.imageUrl, card.sourceUrl);
 		}
+
+		onclose();
 	}
 
 	/**
 	 * @param {KeyboardEvent} e
 	 */
 	function handleKeydown(e) {
-		if (e.key === 'Escape' && open && step !== 'fetching_images') {
+		if (e.key === 'Escape' && open && step !== 'fetching_images' && step !== 'generating') {
 			onclose();
 		}
 	}
@@ -183,83 +189,130 @@
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Bulk Add with AI"
+		aria-label="Bulk Add Cards"
 	>
 		<div
-			class="animate-in fade-in zoom-in-95 relative flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 text-zinc-100 shadow-2xl duration-150"
+			class="shadow-veil relative flex max-h-[90vh] w-full max-w-2xl flex-col border border-line bg-bg-elev text-text {themeStore.current ===
+			'classic'
+				? 'overflow-hidden rounded-2xl border-zinc-800 bg-zinc-900 font-sans shadow-2xl'
+				: ''}"
 		>
-			<!-- Header -->
+			{#if themeStore.current === 'hyv'}
+				<CornerBrackets size={16} />
+				<ScanBand active={step === 'generating' || step === 'fetching_images'} />
+			{/if}
+
+			<!-- Modal Header -->
 			<div
-				class="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/90 px-5 py-3.5"
+				class="flex items-center justify-between border-b border-line bg-bg-elev/90 px-6 py-4 {themeStore.current ===
+				'hyv'
+					? 'font-mono'
+					: 'font-sans'}"
 			>
 				<div class="flex items-center gap-2">
-					<div
-						class="rounded-lg border border-purple-500/20 bg-purple-500/10 p-1.5 text-purple-400"
-					>
-						<Sparkles size={18} />
-					</div>
+					<Layers
+						size={16}
+						class={themeStore.current === 'hyv' ? 'text-accent' : 'text-blue-400'}
+					/>
 					<div>
-						<h3 class="text-base font-semibold text-zinc-100">Bulk Add Cards</h3>
-						<p class="text-xs text-zinc-400">
-							Generate massive rosters with AI or paste a plain text list of items.
+						<h3
+							class="text-xs text-text {themeStore.current === 'hyv'
+								? 'tracking-meta uppercase'
+								: 'font-bold'}"
+						>
+							{themeStore.current === 'hyv'
+								? 'MASS_INGRESS // BATCH_CARD_GENERATOR'
+								: 'Bulk Add Cards'}
+						</h3>
+						<p class="text-[10px] text-muted">
+							{themeStore.current === 'hyv'
+								? 'generate and populate 15 to 150+ cards with AI or custom roster'
+								: 'Generate and add 15 to 150+ cards with AI or custom text'}
 						</p>
 					</div>
 				</div>
-				{#if step !== 'fetching_images'}
-					<button
-						type="button"
-						class="cursor-pointer rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-						onclick={onclose}
-						aria-label="Close bulk add modal"
-					>
-						<X size={18} />
-					</button>
-				{/if}
+
+				<button
+					type="button"
+					disabled={step === 'generating' || step === 'fetching_images'}
+					class="cursor-pointer text-xs text-muted hover:text-text disabled:opacity-40"
+					onclick={onclose}
+					aria-label="Close modal"
+				>
+					&times;
+				</button>
 			</div>
 
-			<!-- Body -->
-			<div class="flex-1 overflow-y-auto p-5">
+			<!-- Modal Content -->
+			<div
+				class="space-y-5 overflow-y-auto p-6 text-xs {themeStore.current === 'classic'
+					? 'font-sans'
+					: 'font-mono'}"
+			>
 				{#if error}
 					<div
-						class="mb-4 flex items-center gap-2.5 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"
+						class="flex items-center gap-2.5 border border-status-fail/40 bg-status-fail/10 p-3 text-status-fail {themeStore.current ===
+						'classic'
+							? 'rounded-lg'
+							: ''}"
 					>
-						<AlertCircle size={16} class="shrink-0 text-red-400" />
+						<AlertCircle size={14} class="shrink-0 text-status-fail" />
 						<span>{error}</span>
 					</div>
 				{/if}
 
 				{#if step === 'input' || step === 'generating'}
-					<!-- Mode Switcher Tabs -->
-					<div class="mb-4 flex rounded-lg border border-zinc-800 bg-zinc-950 p-1">
+					<!-- Mode Switcher -->
+					<div
+						class="flex border border-line bg-bg p-1 text-xs {themeStore.current === 'classic'
+							? 'rounded-lg border-zinc-800 bg-zinc-950'
+							: ''}"
+					>
 						<button
 							type="button"
-							class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md py-1.5 text-xs font-semibold transition-colors {inputMode ===
-							'ai'
-								? 'bg-purple-600 text-white'
-								: 'text-zinc-400 hover:text-zinc-200'}"
+							class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-1.5 transition-colors {themeStore.current ===
+							'classic'
+								? 'rounded-md'
+								: ''} {inputMode === 'ai'
+								? 'border border-accent/40 bg-accent/15 font-medium text-accent-strong'
+								: 'text-muted hover:text-text'}"
 							onclick={() => (inputMode = 'ai')}
+							disabled={step === 'generating'}
 						>
-							<Sparkles size={13} />
-							<span>AI Generator</span>
+							<Sparkles size={12} class="text-accent" />
+							<span class={themeStore.current === 'hyv' ? 'tracking-wide uppercase' : ''}>
+								AI Auto-Roster
+							</span>
 						</button>
+
 						<button
 							type="button"
-							class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md py-1.5 text-xs font-semibold transition-colors {inputMode ===
-							'text'
-								? 'bg-purple-600 text-white'
-								: 'text-zinc-400 hover:text-zinc-200'}"
+							class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-1.5 transition-colors {themeStore.current ===
+							'classic'
+								? 'rounded-md'
+								: ''} {inputMode === 'text'
+								? 'border border-accent/40 bg-accent/15 font-medium text-accent-strong'
+								: 'text-muted hover:text-text'}"
 							onclick={() => (inputMode = 'text')}
+							disabled={step === 'generating'}
 						>
-							<FileText size={13} />
-							<span>Paste Text List</span>
+							<FileText size={12} />
+							<span class={themeStore.current === 'hyv' ? 'tracking-wide uppercase' : ''}>
+								Paste Text List
+							</span>
 						</button>
 					</div>
 
 					{#if inputMode === 'ai'}
 						<div class="space-y-4">
 							<div>
-								<label for="bulk-prompt" class="mb-1.5 block text-xs font-semibold text-zinc-300">
-									What roster or items would you like to generate?
+								<label
+									for="bulk-prompt"
+									class="mb-1.5 block text-[10px] text-muted-strong {themeStore.current === 'hyv'
+										? 'tracking-meta uppercase'
+										: 'font-medium'}"
+								>
+									Roster Directive / Query
 								</label>
 								<textarea
 									id="bulk-prompt"
@@ -267,21 +320,31 @@
 									rows="3"
 									disabled={step === 'generating'}
 									placeholder="e.g. 'All 160+ League of Legends champions' or 'All Gen 1 Pokémon'..."
-									class="w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-white placeholder-zinc-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-hidden disabled:opacity-50"
-								></textarea>
+									class="w-full border border-line bg-bg p-3 text-xs text-text placeholder:text-muted-strong focus:border-accent focus:outline-none disabled:opacity-50 {themeStore.current ===
+									'classic'
+										? 'rounded-lg border-zinc-700 bg-zinc-950'
+										: ''}"></textarea>
 							</div>
 
 							<!-- Count selector -->
 							<div class="flex items-center justify-between">
-								<span class="text-xs text-zinc-400">Target quantity:</span>
+								<span
+									class="text-[10px] text-muted-strong {themeStore.current === 'hyv'
+										? 'tracking-meta uppercase'
+										: 'font-medium'}"
+								>
+									Quantity Target:
+								</span>
 								<div class="flex flex-wrap gap-1.5">
 									{#each COUNT_OPTIONS as option (option)}
 										<button
 											type="button"
-											class="cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors {count ===
-											option
-												? 'border-purple-500 bg-purple-500/20 text-purple-300'
-												: 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}"
+											class="cursor-pointer border px-2.5 py-1 text-xs transition-colors {themeStore.current ===
+											'classic'
+												? 'rounded-md'
+												: ''} {count === option
+												? 'border-accent bg-accent/15 font-medium text-accent-strong'
+												: 'border-line bg-bg text-muted hover:border-line-strong hover:text-text'}"
 											onclick={() => (count = option)}
 											disabled={step === 'generating'}
 										>
@@ -293,12 +356,21 @@
 
 							<!-- Presets -->
 							<div>
-								<p class="mb-2 text-[11px] font-medium text-zinc-400">Popular rosters & ideas:</p>
+								<p
+									class="mb-2 text-[10px] text-muted-strong {themeStore.current === 'hyv'
+										? 'tracking-meta uppercase'
+										: 'font-medium'}"
+								>
+									Common Presets:
+								</p>
 								<div class="flex flex-wrap gap-1.5">
 									{#each PRESETS as preset (preset)}
 										<button
 											type="button"
-											class="cursor-pointer rounded-full border border-zinc-800 bg-zinc-800/80 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-purple-500/50 hover:bg-purple-950/30 hover:text-purple-200"
+											class="cursor-pointer border border-line bg-bg px-2.5 py-1 text-[11px] text-text-soft transition-colors hover:border-accent hover:text-accent-strong {themeStore.current ===
+											'classic'
+												? 'rounded-md border-zinc-700 bg-zinc-800'
+												: ''}"
 											onclick={() => {
 												prompt = preset;
 												if (preset.includes('160') || preset.includes('151')) count = 150;
@@ -306,7 +378,7 @@
 											}}
 											disabled={step === 'generating'}
 										>
-											{preset}
+											<span>{preset}</span>
 										</button>
 									{/each}
 								</div>
@@ -318,83 +390,93 @@
 							<div>
 								<label
 									for="bulk-text-list"
-									class="mb-1.5 block text-xs font-semibold text-zinc-300"
+									class="mb-1.5 block text-[10px] text-muted-strong {themeStore.current === 'hyv'
+										? 'tracking-meta uppercase'
+										: 'font-medium'}"
 								>
-									Paste item names (one per line):
+									Paste Entity Names (one per line):
 								</label>
 								<textarea
 									id="bulk-text-list"
 									bind:value={rawTextList}
 									rows="8"
-									placeholder="Aatrox&#10;Ahri&#10;Akali&#10;Akshan&#10;Alistar&#10;Amumu&#10;Anivia&#10;Annie..."
-									class="w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-hidden"
-								></textarea>
+									placeholder="Aatrox&#10;Ahri&#10;Akali&#10;Akshan&#10;Alistar..."
+									class="w-full border border-line bg-bg p-3 text-xs text-text placeholder:text-muted-strong focus:border-accent focus:outline-none {themeStore.current ===
+									'classic'
+										? 'rounded-lg border-zinc-700 bg-zinc-950'
+										: ''}"></textarea>
 							</div>
-							<p class="text-[11px] text-zinc-400">
-								Tip: You can copy lists directly from Wikipedia or character guides. Each line will
-								automatically be searched on the web to find its official image!
+							<p class="text-[10px] text-muted">
+								Each line will automatically be resolved to its best official web visual.
 							</p>
 						</div>
 					{/if}
 				{:else if step === 'review'}
 					<div class="space-y-3">
 						<div class="flex items-center justify-between">
-							<p class="text-xs text-zinc-400">
-								Review {candidateItems.length} candidate items:
+							<p class="text-xs text-text-soft">
+								Reviewing {candidateItems.length} candidate items:
 							</p>
-							<div class="flex items-center gap-2 text-xs">
+							<div class="flex items-center gap-2">
 								<button
 									type="button"
-									class="cursor-pointer text-purple-400 hover:underline"
+									class="cursor-pointer text-accent hover:underline"
 									onclick={handleSelectAll}
 								>
 									Select All
 								</button>
-								<span class="text-zinc-600">&bull;</span>
+								<span class="text-muted-strong">&bull;</span>
 								<button
 									type="button"
-									class="cursor-pointer text-zinc-400 hover:underline"
+									class="cursor-pointer text-muted hover:text-text hover:underline"
 									onclick={handleDeselectAll}
 								>
-									Clear All
+									Clear
 								</button>
 							</div>
 						</div>
 
-						<!-- Quick Filter Input for large lists -->
+						<!-- Quick Filter Input -->
 						{#if candidateItems.length > 15}
 							<div class="relative">
-								<Search size={13} class="absolute top-1/2 left-3 -translate-y-1/2 text-zinc-500" />
+								<Search size={12} class="absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
 								<input
 									type="text"
 									bind:value={filterQuery}
 									placeholder={`Filter ${candidateItems.length} items...`}
-									class="w-full rounded-lg border border-zinc-800 bg-zinc-950 py-1.5 pr-3 pl-8 text-xs text-zinc-200 placeholder-zinc-500 focus:border-purple-500 focus:outline-hidden"
+									class="w-full border border-line bg-bg py-1.5 pr-3 pl-8 text-xs text-text placeholder:text-muted-strong focus:border-accent focus:outline-none {themeStore.current ===
+									'classic'
+										? 'rounded-lg border-zinc-700 bg-zinc-950'
+										: ''}"
 								/>
 							</div>
 						{/if}
 
 						<!-- Candidate Item Checkbox List -->
 						<div
-							class="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 p-2.5"
+							class="max-h-64 space-y-1 overflow-y-auto border border-line bg-bg p-2.5 {themeStore.current ===
+							'classic'
+								? 'rounded-xl border-zinc-800 bg-zinc-950'
+								: ''}"
 						>
 							{#each filteredCandidates as item (item.name)}
 								<button
 									type="button"
-									class="flex w-full cursor-pointer items-center justify-between rounded-lg p-2 text-left text-xs transition-colors hover:bg-zinc-800/60 {item.selected
-										? 'text-zinc-100'
-										: 'text-zinc-500 line-through'}"
+									class="flex w-full cursor-pointer items-center justify-between p-1.5 text-left text-xs transition-colors hover:bg-bg-elev {themeStore.current ===
+									'classic'
+										? 'rounded-md'
+										: ''} {item.selected ? 'text-text' : 'text-muted-strong line-through'}"
 									onclick={() => toggleItemByName(item.name)}
 								>
-									<div class="flex items-center gap-2.5">
+									<div class="flex items-center gap-2">
 										{#if item.selected}
-											<CheckSquare size={16} class="shrink-0 text-purple-400" />
+											<CheckSquare size={14} class="shrink-0 text-accent" />
 										{:else}
-											<Square size={16} class="shrink-0 text-zinc-600" />
+											<Square size={14} class="shrink-0 text-muted-strong" />
 										{/if}
-										<span class="font-medium">{item.name}</span>
+										<span>{item.name}</span>
 									</div>
-									<span class="truncate pl-2 text-[10px] text-zinc-500">{item.searchQuery}</span>
+									<span class="truncate pl-2 text-[10px] text-muted">{item.searchQuery}</span>
 								</button>
 							{/each}
 						</div>
@@ -402,28 +484,35 @@
 				{:else if step === 'fetching_images'}
 					<!-- Progress State -->
 					<div class="flex flex-col items-center justify-center py-8 text-center">
-						<div
-							class="mb-4 rounded-full border border-purple-500/20 bg-purple-500/10 p-4 text-purple-400"
+						<Loader2 size={28} class="animate-spin text-accent" />
+						<h4
+							class="mt-3 text-xs text-text {themeStore.current === 'hyv'
+								? 'tracking-meta uppercase'
+								: 'font-bold'}"
 						>
-							<Loader2 size={32} class="animate-spin" />
-						</div>
-						<h4 class="text-base font-semibold text-zinc-100">
-							Finding Images & Creating Cards...
+							{themeStore.current === 'hyv'
+								? 'RESOLVING_WEB_VISUALS // INGRESS_ACTIVE'
+								: 'Fetching High-Res Images...'}
 						</h4>
-						<p class="mt-1 text-xs text-zinc-400">
-							Searching best image for: <strong class="text-purple-300"
+						<p class="mt-1 text-xs text-muted">
+							Fetching: <strong class="text-accent-strong"
 								>{progress.currentItemName || 'card...'}</strong
 							>
 						</p>
 
 						<!-- Progress Bar -->
-						<div class="mt-5 h-2.5 w-full max-w-sm overflow-hidden rounded-full bg-zinc-800">
+						<div
+							class="mt-5 h-1.5 w-full max-w-sm border border-line bg-bg {themeStore.current ===
+							'classic'
+								? 'overflow-hidden rounded-full'
+								: ''}"
+						>
 							<div
-								class="h-full bg-gradient-to-r from-purple-600 to-blue-500 transition-all duration-300"
+								class="h-full bg-accent transition-all duration-200"
 								style="width: {progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%"
 							></div>
 						</div>
-						<p class="mt-2 text-[11px] text-zinc-400">
+						<p class="mt-2 text-[10px] text-muted">
 							{progress.current} of {progress.total} cards ready ({Math.round(
 								(progress.current / (progress.total || 1)) * 100
 							)}%)
@@ -433,11 +522,19 @@
 			</div>
 
 			<!-- Footer Actions -->
-			<div class="flex items-center justify-between border-t border-zinc-800 bg-zinc-950 px-5 py-3">
+			<div
+				class="flex items-center justify-between border-t border-line bg-bg px-5 py-3 text-xs {themeStore.current ===
+				'classic'
+					? 'font-sans'
+					: 'font-mono'}"
+			>
 				{#if step === 'input' || step === 'generating'}
 					<button
 						type="button"
-						class="cursor-pointer rounded-lg bg-zinc-800 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+						class="cursor-pointer border border-line bg-bg-elev px-3.5 py-1.5 text-muted transition-colors hover:text-text {themeStore.current ===
+						'classic'
+							? 'rounded-lg border-zinc-700 bg-zinc-800'
+							: ''}"
 						onclick={onclose}
 					>
 						Cancel
@@ -447,51 +544,70 @@
 						<button
 							type="button"
 							disabled={!prompt.trim() || step === 'generating'}
-							class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-md transition-all hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+							class="flex cursor-pointer items-center gap-1.5 border border-accent bg-accent/20 px-4 py-1.5 font-medium text-accent transition-all hover:bg-accent/30 hover:text-accent-strong disabled:pointer-events-none disabled:opacity-30 {themeStore.current ===
+							'classic'
+								? 'rounded-lg font-semibold'
+								: ''}"
 							onclick={handleGenerateList}
 						>
 							{#if step === 'generating'}
-								<Loader2 size={13} class="animate-spin" />
-								<span>Generating Roster...</span>
+								<Loader2 size={12} class="animate-spin text-accent" />
+								<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>
+									Generating Roster...
+								</span>
 							{:else}
-								<Sparkles size={13} />
-								<span>Generate {count} Items</span>
+								<Sparkles size={12} />
+								<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>
+									Generate {count} Cards
+								</span>
+								<ArrowRight size={12} />
 							{/if}
 						</button>
 					{:else}
 						<button
 							type="button"
 							disabled={!rawTextList.trim()}
-							class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-1.5 text-xs font-semibold text-white shadow-md transition-all hover:bg-purple-500 disabled:pointer-events-none disabled:opacity-40"
+							class="flex cursor-pointer items-center gap-1.5 border border-accent bg-accent/20 px-4 py-1.5 font-medium text-accent transition-all hover:bg-accent/30 hover:text-accent-strong disabled:pointer-events-none disabled:opacity-30 {themeStore.current ===
+							'classic'
+								? 'rounded-lg font-semibold'
+								: ''}"
 							onclick={handleParseTextList}
 						>
-							<ArrowRight size={13} />
-							<span>Review List</span>
+							<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Review Cards</span>
+							<ArrowRight size={12} />
 						</button>
 					{/if}
 				{:else if step === 'review'}
 					<button
 						type="button"
-						class="cursor-pointer rounded-lg bg-zinc-800 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+						class="cursor-pointer border border-line bg-bg-elev px-3.5 py-1.5 text-muted transition-colors hover:text-text {themeStore.current ===
+						'classic'
+							? 'rounded-lg border-zinc-700 bg-zinc-800'
+							: ''}"
 						onclick={() => (step = 'input')}
 					>
 						Back
 					</button>
+
 					<button
 						type="button"
 						disabled={selectedCount === 0}
-						class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-purple-500 disabled:pointer-events-none disabled:opacity-40"
-						onclick={handleAddSelectedItems}
+						class="flex cursor-pointer items-center gap-1.5 border border-accent bg-accent/20 px-4 py-1.5 font-medium text-accent transition-all hover:bg-accent/30 hover:text-accent-strong disabled:pointer-events-none disabled:opacity-30 {themeStore.current ===
+						'classic'
+							? 'rounded-lg font-semibold'
+							: ''}"
+						onclick={handleIngestCards}
 					>
-						<Layers size={13} />
-						<span>
-							Add {selectedCount} Cards to Unranked
+						<Layers size={12} />
+						<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>
+							Deploy {selectedCount} Cards to Board
 						</span>
-						<ArrowRight size={13} />
+						<ArrowRight size={12} />
 					</button>
 				{:else if step === 'fetching_images'}
-					<div class="w-full text-center text-xs text-zinc-500">
-						Processing web image lookups in high-speed batches...
+					<div></div>
+					<div class="text-[10px] text-muted">
+						Resolving images in parallel (5 concurrent streams)...
 					</div>
 				{/if}
 			</div>

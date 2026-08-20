@@ -173,12 +173,12 @@ export const STARTER_TEMPLATES = [
 		thumbnail:
 			'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png',
 		tiers: [
-			{ id: 'tier-s', label: 'S', color: '#ef4444', order: 0 },
-			{ id: 'tier-a', label: 'A', color: '#f97316', order: 1 },
-			{ id: 'tier-b', label: 'B', color: '#eab308', order: 2 },
-			{ id: 'tier-c', label: 'C', color: '#10b981', order: 3 },
-			{ id: 'tier-d', label: 'D', color: '#3b82f6', order: 4 },
-			{ id: 'tier-f', label: 'F', color: '#8b5cf6', order: 5 }
+			{ id: 'tier-s', label: 'S', color: '#FFD000', order: 0 },
+			{ id: 'tier-a', label: 'A', color: '#A335EE', order: 1 },
+			{ id: 'tier-b', label: 'B', color: '#0070DD', order: 2 },
+			{ id: 'tier-c', label: 'C', color: '#1EFF00', order: 3 },
+			{ id: 'tier-d', label: 'D', color: '#CD7F32', order: 4 },
+			{ id: 'tier-f', label: 'F', color: '#808080', order: 5 }
 		],
 		items: [
 			{
@@ -270,11 +270,11 @@ export const STARTER_TEMPLATES = [
 		context: 'Marvel Cinematic Universe',
 		thumbnail: 'https://images.unsplash.com/photo-1604200213928-ba3cf4fc8436?w=300&q=80',
 		tiers: [
-			{ id: 'tier-god', label: 'God Tier', color: '#ef4444', order: 0 },
-			{ id: 'tier-great', label: 'Great', color: '#f97316', order: 1 },
-			{ id: 'tier-good', label: 'Good', color: '#eab308', order: 2 },
-			{ id: 'tier-mid', label: 'Mid', color: '#3b82f6', order: 3 },
-			{ id: 'tier-skip', label: 'Skip', color: '#8b5cf6', order: 4 }
+			{ id: 'tier-god', label: 'God Tier', color: '#FFD000', order: 0 },
+			{ id: 'tier-great', label: 'Great', color: '#A335EE', order: 1 },
+			{ id: 'tier-good', label: 'Good', color: '#0070DD', order: 2 },
+			{ id: 'tier-mid', label: 'Mid', color: '#1EFF00', order: 3 },
+			{ id: 'tier-skip', label: 'Skip', color: '#808080', order: 4 }
 		],
 		items: [
 			{

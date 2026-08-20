@@ -1,17 +1,11 @@
 <script>
-	import {
-		Search,
-		Link,
-		Loader2,
-		AlertCircle,
-		X,
-		ExternalLink,
-		Image,
-		Sparkles
-	} from 'lucide-svelte';
+	import { Search, Link, Loader2, AlertCircle, ExternalLink, Image, Sparkles } from 'lucide-svelte';
 	import { searchImages } from '#lib/services/imageSearch.js';
 	import { fetchDisambiguation } from '#lib/services/ai.js';
 	import { board } from '#lib/stores/board.svelte.js';
+	import { themeStore } from '#lib/stores/theme.svelte.js';
+	import CornerBrackets from './ambient/CornerBrackets.svelte';
+	import ScanBand from './ambient/ScanBand.svelte';
 
 	/**
 	 * @type {{
@@ -86,9 +80,10 @@
 		isLoading = false;
 
 		if (res.error) {
-			error = res.message || 'Image search failed.';
+			error = res.message || 'Image search query failed.';
 		} else if (res.results.length === 0) {
-			error = 'No images found. Try refining your search query or use a direct image URL.';
+			error =
+				'No matching visual candidates found. Refine search keywords or input direct image URL.';
 		} else {
 			results = res.results;
 		}
@@ -124,7 +119,7 @@
 		onselect({
 			name: itemName || 'Custom Image',
 			imageUrl: manualUrl.trim(),
-			sourceUrl: undefined
+			sourceUrl: manualUrl.trim()
 		});
 		onclose();
 	}
@@ -143,66 +138,97 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"
 		role="dialog"
 		aria-modal="true"
 	>
 		<div
-			class="animate-in fade-in zoom-in-95 relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 text-zinc-100 shadow-2xl duration-150"
+			class="shadow-veil relative flex max-h-[90vh] w-full max-w-2xl flex-col border border-line bg-bg-elev text-text {themeStore.current ===
+			'classic'
+				? 'overflow-hidden rounded-2xl border-zinc-800 bg-zinc-900 font-sans shadow-2xl'
+				: ''}"
 		>
+			{#if themeStore.current === 'hyv'}
+				<CornerBrackets size={16} />
+				<ScanBand active={isLoading || isRefining} />
+			{/if}
+
 			<!-- Modal Header -->
 			<div
-				class="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/90 px-5 py-3.5"
+				class="flex items-center justify-between border-b border-line bg-bg-elev/90 px-5 py-3 {themeStore.current ===
+				'hyv'
+					? 'font-mono'
+					: 'font-sans'}"
 			>
 				<div>
-					<h3 class="text-base font-semibold text-zinc-100">
-						{mode === 'change'
-							? `Change Image for "${itemName}"`
-							: `Select Image for "${itemName}"`}
+					<h3
+						class="text-xs text-text {themeStore.current === 'hyv'
+							? 'tracking-meta uppercase'
+							: 'font-bold'}"
+					>
+						{mode === 'change' ? `Select Visual: "${itemName}"` : `Add Card: "${itemName}"`}
 					</h3>
-					<p class="mt-0.5 text-xs text-zinc-400">
-						Click an image candidate to create your card instantly.
+					<p class="mt-0.5 text-[10px] text-muted">
+						{themeStore.current === 'hyv'
+							? 'select visual candidate to bind entity card'
+							: 'Pick an image candidate or enter a direct image URL'}
 					</p>
 				</div>
 				<button
 					type="button"
-					class="cursor-pointer rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+					class="cursor-pointer text-xs text-muted hover:text-text"
 					onclick={onclose}
 					aria-label="Close image picker"
 				>
-					<X size={18} />
+					&times;
 				</button>
 			</div>
 
 			<!-- Search and Mode Controls -->
-			<div class="space-y-3 border-b border-zinc-800 bg-zinc-950/40 p-4">
+			<div
+				class="space-y-3 border-b border-line bg-bg/50 p-4 text-xs {themeStore.current === 'classic'
+					? 'font-sans'
+					: 'font-mono'}"
+			>
 				<div class="flex items-center justify-between gap-3">
 					<!-- Tabs -->
-					<div class="bg-zinc-850 flex rounded-lg border border-zinc-800 p-0.5 text-xs">
+					<div
+						class="flex border border-line bg-bg p-0.5 {themeStore.current === 'classic'
+							? 'rounded-lg border-zinc-800'
+							: ''}"
+					>
 						<button
 							type="button"
-							class="cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors {activeTab ===
-							'search'
-								? 'bg-blue-600 text-white shadow-xs'
-								: 'text-zinc-400 hover:text-zinc-200'}"
+							class="cursor-pointer px-3 py-1 text-xs transition-colors {themeStore.current ===
+							'classic'
+								? 'rounded-md'
+								: ''} {activeTab === 'search'
+								? 'border border-accent/40 bg-accent/15 font-medium text-accent-strong'
+								: 'text-muted hover:text-text'}"
 							onclick={() => (activeTab = 'search')}
 						>
-							<span class="flex items-center gap-1.5">
-								<Search size={13} />
+							<span
+								class="flex items-center gap-1.5 {themeStore.current === 'hyv' ? 'uppercase' : ''}"
+							>
+								<Search size={11} />
 								<span>Search Web</span>
 							</span>
 						</button>
 						<button
 							type="button"
-							class="cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors {activeTab ===
-							'url'
-								? 'bg-blue-600 text-white shadow-xs'
-								: 'text-zinc-400 hover:text-zinc-200'}"
+							class="cursor-pointer px-3 py-1 text-xs transition-colors {themeStore.current ===
+							'classic'
+								? 'rounded-md'
+								: ''} {activeTab === 'url'
+								? 'border border-accent/40 bg-accent/15 font-medium text-accent-strong'
+								: 'text-muted hover:text-text'}"
 							onclick={() => (activeTab = 'url')}
 						>
-							<span class="flex items-center gap-1.5">
-								<Link size={13} />
-								<span>Direct Image URL</span>
+							<span
+								class="flex items-center gap-1.5 {themeStore.current === 'hyv' ? 'uppercase' : ''}"
+							>
+								<Link size={11} />
+								<span>Direct URL</span>
 							</span>
 						</button>
 					</div>
@@ -212,38 +238,47 @@
 					<!-- Search Form -->
 					<form onsubmit={handleSearchSubmit} class="flex gap-2">
 						<div class="relative flex-1">
-							<Search size={15} class="absolute top-1/2 left-3 -translate-y-1/2 text-zinc-500" />
+							<Search size={12} class="absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
 							<input
 								type="text"
 								bind:value={query}
-								placeholder="Search images..."
-								class="w-full rounded-lg border border-zinc-700/80 bg-zinc-900 py-2 pr-3 pl-9 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+								placeholder="Search query keywords..."
+								class="w-full border border-line bg-bg py-1.5 pr-3 pl-8 text-xs text-text placeholder:text-muted-strong focus:border-accent focus:outline-none {themeStore.current ===
+								'classic'
+									? 'rounded-lg border-zinc-700 bg-zinc-950'
+									: ''}"
 							/>
 						</div>
 						<button
 							type="button"
 							disabled={isRefining || !query.trim()}
-							class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-500/20 disabled:pointer-events-none disabled:opacity-40"
+							class="flex shrink-0 cursor-pointer items-center gap-1 border border-accent/40 bg-bg px-2.5 py-1.5 text-xs text-accent transition-colors hover:border-accent hover:bg-accent/15 hover:text-accent-strong disabled:pointer-events-none disabled:opacity-30 {themeStore.current ===
+							'classic'
+								? 'rounded-lg'
+								: ''}"
 							onclick={handleAiRefine}
 							title="Fix typos and find canonical search keywords with AI"
 						>
 							{#if isRefining}
-								<Loader2 size={13} class="animate-spin text-purple-400" />
+								<Loader2 size={11} class="animate-spin text-accent" />
 							{:else}
-								<Sparkles size={13} class="text-purple-400" />
+								<Sparkles size={11} />
 							{/if}
-							<span>AI Refine</span>
+							<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Refine</span>
 						</button>
 						<button
 							type="submit"
 							disabled={isLoading || !query.trim()}
-							class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 disabled:pointer-events-none disabled:opacity-50"
+							class="flex shrink-0 cursor-pointer items-center gap-1 border border-accent bg-accent/20 px-3.5 py-1.5 font-medium text-accent transition-colors hover:bg-accent/30 hover:text-accent-strong disabled:pointer-events-none disabled:opacity-30 {themeStore.current ===
+							'classic'
+								? 'rounded-lg font-semibold'
+								: ''}"
 						>
 							{#if isLoading}
-								<Loader2 size={13} class="animate-spin" />
-								<span>Searching...</span>
+								<Loader2 size={11} class="animate-spin text-accent" />
+								<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Searching...</span>
 							{:else}
-								<span>Search</span>
+								<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Search</span>
 							{/if}
 						</button>
 					</form>
@@ -251,18 +286,24 @@
 					<!-- Manual URL Form -->
 					<form onsubmit={handleManualSubmit} class="flex gap-2">
 						<div class="relative flex-1">
-							<Link size={15} class="absolute top-1/2 left-3 -translate-y-1/2 text-zinc-500" />
+							<Link size={12} class="absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
 							<input
 								type="url"
 								bind:value={manualUrl}
 								placeholder="https://example.com/image.png"
-								class="w-full rounded-lg border border-zinc-700/80 bg-zinc-900 py-2 pr-3 pl-9 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+								class="w-full border border-line bg-bg py-1.5 pr-3 pl-8 text-xs text-text placeholder:text-muted-strong focus:border-accent focus:outline-none {themeStore.current ===
+								'classic'
+									? 'rounded-lg border-zinc-700 bg-zinc-950'
+									: ''}"
 							/>
 						</div>
 						<button
 							type="submit"
 							disabled={!manualUrl.trim()}
-							class="shrink-0 cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 disabled:pointer-events-none disabled:opacity-50"
+							class="shrink-0 cursor-pointer border border-accent bg-accent/20 px-3.5 py-1.5 font-medium text-accent transition-colors hover:bg-accent/30 hover:text-accent-strong disabled:pointer-events-none disabled:opacity-30 {themeStore.current ===
+							'classic'
+								? 'rounded-lg font-semibold'
+								: 'uppercase'}"
 						>
 							{mode === 'change' ? 'Apply Image' : 'Create Card'}
 						</button>
@@ -271,12 +312,18 @@
 			</div>
 
 			<!-- Candidate Grid & States -->
-			<div class="min-h-64 flex-1 overflow-y-auto p-5">
+			<div
+				class="min-h-64 flex-1 overflow-y-auto p-5 text-xs {themeStore.current === 'classic'
+					? 'font-sans'
+					: 'font-mono'}"
+			>
 				{#if activeTab === 'url'}
 					<div class="flex flex-col items-center justify-center p-6 text-center">
 						{#if manualUrl}
 							<div
-								class="mb-3 h-36 w-36 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-md"
+								class="mb-3 h-36 w-36 border border-line bg-bg {themeStore.current === 'classic'
+									? 'overflow-hidden rounded-xl border-zinc-800'
+									: ''}"
 							>
 								<img
 									src={manualUrl}
@@ -288,26 +335,34 @@
 									}}
 								/>
 							</div>
-							<p class="text-xs text-zinc-400">Click "Apply Image" above to use this URL.</p>
+							<p class="text-xs text-muted">Click "Apply Image" to bind this URL.</p>
 						{:else}
-							<div class="mb-3 rounded-full bg-zinc-800/80 p-4 text-zinc-400">
-								<Image size={28} />
+							<div
+								class="mb-3 border border-line bg-bg p-3 text-muted {themeStore.current ===
+								'classic'
+									? 'rounded-xl'
+									: ''}"
+							>
+								<Image size={24} />
 							</div>
-							<p class="text-sm font-medium text-zinc-300">Paste any image web link</p>
-							<p class="mt-1 max-w-sm text-xs text-zinc-500">
-								You can paste direct JPG, PNG, WebP, or SVG links from any website.
+							<p class="text-xs font-medium text-text">Paste direct web image URL</p>
+							<p class="mt-1 max-w-sm text-[10px] text-muted">
+								Supports direct JPG, PNG, WebP, or SVG resources from any public link.
 							</p>
 						{/if}
 					</div>
 				{:else if isLoading}
 					<!-- Skeleton Candidate Grid -->
-					<div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+					<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 						{#each [0, 1, 2, 3, 4, 5, 6, 7] as i (i)}
 							<div
-								class="flex aspect-square animate-pulse flex-col justify-end rounded-xl border border-zinc-800 bg-zinc-800/60 p-2"
+								class="flex aspect-square animate-pulse flex-col justify-end border border-line bg-bg/80 p-2 {themeStore.current ===
+								'classic'
+									? 'rounded-xl border-zinc-800'
+									: ''}"
 							>
-								<div class="mb-1 h-3 w-3/4 rounded bg-zinc-700/60"></div>
-								<div class="h-2 w-1/2 rounded bg-zinc-700/40"></div>
+								<div class="mb-1 h-2.5 w-3/4 bg-line-strong"></div>
+								<div class="h-2 w-1/2 bg-line"></div>
 							</div>
 						{/each}
 					</div>
@@ -315,30 +370,43 @@
 					<!-- Error or No Results State -->
 					<div class="flex flex-col items-center justify-center px-4 py-10 text-center">
 						<div
-							class="mb-3 rounded-full border border-amber-500/20 bg-amber-500/10 p-3 text-amber-400"
+							class="mb-2 border border-line p-2 text-status-warn {themeStore.current === 'classic'
+								? 'rounded-lg'
+								: ''}"
 						>
-							<AlertCircle size={24} />
+							<AlertCircle size={20} />
 						</div>
-						<h4 class="text-sm font-semibold text-zinc-200">{error}</h4>
-						<p class="mt-1.5 max-w-md text-xs text-zinc-400">
-							You can edit the query above to search with different keywords, or switch to "Direct
-							Image URL" to paste an image link.
+						<h4
+							class="text-xs text-text {themeStore.current === 'hyv'
+								? 'uppercase'
+								: 'font-semibold'}"
+						>
+							{themeStore.current === 'hyv' ? '// NO_RESULTS' : 'No Results Found'}
+						</h4>
+						<p class="mt-1 max-w-md text-[10px] text-muted">
+							{error}
 						</p>
 						<button
 							type="button"
-							class="mt-4 cursor-pointer rounded-lg border border-blue-500/20 bg-blue-500/10 px-3.5 py-1.5 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
+							class="mt-3 cursor-pointer border border-line bg-bg px-3 py-1 text-xs text-text transition-colors hover:border-accent hover:text-accent-strong {themeStore.current ===
+							'classic'
+								? 'rounded-lg border-zinc-700 bg-zinc-800'
+								: 'uppercase'}"
 							onclick={() => (activeTab = 'url')}
 						>
-							Paste Direct Image URL Instead
+							Paste Direct Image URL
 						</button>
 					</div>
 				{:else if results.length > 0}
 					<!-- Candidate Results Grid -->
-					<div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+					<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 						{#each results as item (item.id)}
 							<button
 								type="button"
-								class="group relative flex aspect-square cursor-pointer flex-col justify-end overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 text-left shadow-md transition-all hover:border-blue-500 hover:ring-2 hover:ring-blue-500/50"
+								class="group relative flex aspect-square cursor-pointer flex-col justify-end border border-line bg-bg text-left transition-all hover:border-accent {themeStore.current ===
+								'classic'
+									? 'overflow-hidden rounded-xl border-zinc-800 bg-zinc-950 hover:shadow-lg'
+									: ''}"
 								onclick={() => handleSelect(item)}
 								title={item.title}
 							>
@@ -354,16 +422,22 @@
 
 								<!-- Gradient Overlay & Caption -->
 								<div
-									class="relative z-10 w-full bg-gradient-to-t from-black/90 via-black/60 to-transparent p-2"
+									class="relative z-10 w-full bg-gradient-to-t from-bg via-bg/80 to-transparent p-2 {themeStore.current ===
+									'hyv'
+										? 'font-mono'
+										: 'font-sans'}"
 								>
 									<p
-										class="truncate text-[11px] leading-tight font-medium text-white/95 drop-shadow-sm"
+										class="truncate text-[10px] text-text drop-shadow-xs {themeStore.current ===
+										'hyv'
+											? 'lowercase'
+											: 'font-medium'}"
 									>
 										{item.title}
 									</p>
 									{#if item.sourceUrl}
-										<div class="mt-0.5 flex items-center gap-1 truncate text-[9px] text-zinc-400">
-											<ExternalLink size={9} />
+										<div class="mt-0.5 flex items-center gap-1 truncate text-[8px] text-muted">
+											<ExternalLink size={8} />
 											<span class="truncate">
 												{(() => {
 													try {
@@ -384,10 +458,13 @@
 
 			<!-- Footer Note -->
 			<div
-				class="flex items-center justify-between border-t border-zinc-800 bg-zinc-950 px-5 py-2.5 text-[11px] text-zinc-500"
+				class="flex items-center justify-between border-t border-line bg-bg px-5 py-2.5 text-[10px] text-muted {themeStore.current ===
+				'hyv'
+					? 'tracking-meta font-mono uppercase'
+					: 'font-sans'}"
 			>
-				<span>Powered by Google Images & Web Search</span>
-				<span>Press Escape to close</span>
+				<span>Powered by Google Images API</span>
+				<span>Esc to Close</span>
 			</div>
 		</div>
 	</div>

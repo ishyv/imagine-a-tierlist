@@ -1,220 +1,243 @@
 <script>
-	import { Search, Plus, Sparkles, Loader2, Library } from 'lucide-svelte';
+	import { Plus, Sparkles, Loader2, Library } from 'lucide-svelte';
 	import { board } from '#lib/stores/board.svelte.js';
 	import { cardStash } from '#lib/stores/cardStash.svelte.js';
+	import { themeStore } from '#lib/stores/theme.svelte.js';
 	import { buildSearchQuery } from '#lib/services/imageSearch.js';
 	import { fetchDisambiguation } from '#lib/services/ai.js';
 	import ImagePicker from './ImagePicker.svelte';
 	import BulkAddModal from './BulkAddModal.svelte';
 	import AiSuggestionsBar from './AiSuggestionsBar.svelte';
+	import CornerBrackets from './ambient/CornerBrackets.svelte';
 
-	let itemName = $state('');
+	let inputQuery = $state('');
+	let isRefining = $state(false);
 	let pickerOpen = $state(false);
 	let pickerQuery = $state('');
-	let activeItemName = $state('');
-	let isBulkModalOpen = $state(false);
-	let isDisambiguating = $state(false);
+	let pickerItemName = $state('');
+	let bulkModalOpen = $state(false);
 	/** @type {HTMLInputElement | null} */
-	let inputEl = $state(null);
-
-	const matchingStashCards = $derived.by(() => {
-		return cardStash.findMatches(itemName, 3);
-	});
+	let searchInput = $state(null);
 
 	/**
-	 * @param {SubmitEvent} [e]
+	 * @param {SubmitEvent} e
 	 */
-	function handleSubmit(e) {
-		e?.preventDefault();
-		const trimmed = itemName.trim();
-		if (!trimmed) return;
+	async function handleSubmit(e) {
+		e.preventDefault();
+		const name = inputQuery.trim();
+		if (!name) return;
 
-		activeItemName = trimmed;
-		pickerQuery = buildSearchQuery(trimmed, board.context);
+		pickerItemName = name;
+		pickerQuery = buildSearchQuery(name, board.context);
 		pickerOpen = true;
 	}
 
 	/**
-	 * Smart Refine / Disambiguation using AI
+	 * Disambiguates and improves the query using AI
 	 */
 	async function handleSmartRefine() {
-		const trimmed = itemName.trim();
-		if (!trimmed || isDisambiguating) return;
+		const name = inputQuery.trim();
+		if (!name || isRefining) return;
 
-		isDisambiguating = true;
-		const result = await fetchDisambiguation(trimmed, board.context);
-		isDisambiguating = false;
+		isRefining = true;
+		const refined = await fetchDisambiguation(name, board.context);
+		isRefining = false;
 
-		if (result && result.canonicalName) {
-			itemName = result.canonicalName;
-			activeItemName = result.canonicalName;
-			pickerQuery = result.searchQuery || buildSearchQuery(result.canonicalName, board.context);
+		if (refined) {
+			inputQuery = refined.canonicalName || name;
+			pickerItemName = refined.canonicalName || name;
+			pickerQuery = refined.searchQuery || buildSearchQuery(name, board.context);
 			pickerOpen = true;
 		}
 	}
 
 	/**
-	 * @param {import('#lib/stores/cardStash.svelte.js').StashCard} stashCard
-	 */
-	function handleAddFromStash(stashCard) {
-		board.addCardFromStash(stashCard);
-		itemName = '';
-		setTimeout(() => {
-			inputEl?.focus();
-		}, 50);
-	}
-
-	/**
 	 * @param {{ name: string; imageUrl: string; sourceUrl?: string }} result
 	 */
-	function handleImageSelected(result) {
+	function handleCardSelected(result) {
 		board.addItem(result.name, result.imageUrl, result.sourceUrl);
 
-		// Clear input and refocus for seamless multi-item creation
-		itemName = '';
-		pickerOpen = false;
-		setTimeout(() => {
-			inputEl?.focus();
-		}, 50);
-	}
+		// Automatically index into global card stash
+		cardStash.addCard({
+			name: result.name,
+			imageUrl: result.imageUrl,
+			sourceUrl: result.sourceUrl,
+			context: board.context
+		});
 
-	function handlePickerClose() {
+		inputQuery = '';
 		pickerOpen = false;
-		setTimeout(() => {
-			inputEl?.focus();
-		}, 50);
 	}
 
 	/**
-	 * Global shortcut: Pressing '/' focuses search input
+	 * Direct creation without image
+	 */
+	function handleAddDirect() {
+		const name = inputQuery.trim();
+		if (!name) return;
+
+		board.addItem(name, '');
+		inputQuery = '';
+	}
+
+	/**
 	 * @param {KeyboardEvent} e
 	 */
 	function handleWindowKeydown(e) {
+		// '/' shortcut to quickly focus command input when not in another input
 		if (
 			e.key === '/' &&
-			!pickerOpen &&
-			!isBulkModalOpen &&
 			document.activeElement?.tagName !== 'INPUT' &&
 			document.activeElement?.tagName !== 'TEXTAREA'
 		) {
 			e.preventDefault();
-			inputEl?.focus();
+			searchInput?.focus();
 		}
 	}
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<div class="mx-auto my-6 w-full max-w-2xl">
-	<form
-		onsubmit={handleSubmit}
-		class="relative flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 p-1.5 shadow-xl backdrop-blur-md transition-all focus-within:border-blue-500/80 focus-within:ring-2 focus-within:ring-blue-500/20"
-	>
-		<div class="relative flex flex-1 items-center">
-			<Search size={18} class="pointer-events-none absolute left-3.5 text-zinc-400" />
+<section
+	class="mx-auto w-full max-w-6xl space-y-3 {themeStore.current === 'hyv'
+		? 'font-mono text-xs'
+		: 'font-sans text-sm'}"
+>
+	<!-- Command Ingress Search Bar -->
+	<form onsubmit={handleSubmit} class="relative flex items-center">
+		<!-- Inner Frame -->
+		<div
+			class="shadow-card relative flex flex-1 items-center border border-line bg-bg-surface p-1 transition-all duration-200 focus-within:border-accent {themeStore.current ===
+			'hyv'
+				? 'focus-within:shadow-[0_0_24px_rgba(199,156,87,0.18)]'
+				: 'rounded-xl border-zinc-700 bg-zinc-900 focus-within:border-blue-500'}"
+		>
+			{#if themeStore.current === 'hyv'}
+				<CornerBrackets size={10} color="var(--line)" />
+			{/if}
+
+			<!-- Command Prompt Indicator -->
+			{#if themeStore.current === 'hyv'}
+				<span class="pr-2 pl-3 font-mono text-sm font-semibold text-accent select-none">&gt;</span>
+			{:else}
+				<span class="pr-1 pl-3 font-sans text-base font-semibold text-zinc-500 select-none">🔍</span
+				>
+			{/if}
+
 			<input
-				bind:this={inputEl}
+				bind:this={searchInput}
 				type="text"
-				bind:value={itemName}
-				placeholder={board.context
-					? `Add something (e.g. "Ahri" in ${board.context})...`
-					: 'Add something to tier list (e.g. "LeBlanc")...'}
-				class="w-full bg-transparent py-2 pr-9 pl-10 text-sm text-white placeholder-zinc-500 focus:outline-hidden"
+				bind:value={inputQuery}
+				placeholder={themeStore.current === 'hyv'
+					? 'query entity to generate card (e.g. jinx, ferrari f40, hollow knight)...'
+					: 'Type any item name to search image (e.g. Pikachu, Dark Souls, Pizza)...'}
+				class="w-full bg-transparent py-2.5 pr-2 {themeStore.current === 'hyv'
+					? 'font-mono text-xs'
+					: 'font-sans text-sm'} text-text placeholder:text-muted-strong focus:outline-none"
 			/>
 
-			{#if itemName.trim()}
+			<!-- Key shortcut hint -->
+			{#if !inputQuery}
+				<div class="mr-2 hidden items-center text-[10px] text-muted-strong sm:flex">
+					<kbd
+						class="border border-line bg-bg px-1.5 py-0.5 {themeStore.current === 'classic'
+							? 'rounded-md text-zinc-400'
+							: ''}">/</kbd
+					>
+				</div>
+			{/if}
+
+			<!-- Action Buttons -->
+			<div class="flex items-center gap-1.5 pr-1">
+				<!-- Smart AI Refine Button -->
 				<button
 					type="button"
-					disabled={isDisambiguating}
-					class="absolute right-2.5 cursor-pointer rounded-md p-1 text-purple-400 transition-colors hover:bg-purple-500/20 hover:text-purple-300 disabled:opacity-40"
+					disabled={isRefining || !inputQuery.trim()}
+					class="hidden cursor-pointer items-center gap-1.5 border px-2.5 py-1.5 text-xs transition-all duration-150 disabled:pointer-events-none disabled:opacity-30 sm:flex {themeStore.current ===
+					'hyv'
+						? 'border-accent/40 bg-bg text-accent hover:border-accent hover:bg-accent/15 hover:text-accent-strong'
+						: 'rounded-lg border-amber-500/30 bg-amber-500/10 font-semibold text-amber-300 hover:bg-amber-500/20'}"
 					onclick={handleSmartRefine}
-					title="Smart Refine with AI: Fix typos & find exact entity"
-					aria-label="Smart Refine with AI"
+					title="Disambiguate entity and refine search query with AI"
 				>
-					{#if isDisambiguating}
-						<Loader2 size={15} class="animate-spin" />
+					{#if isRefining}
+						<Loader2
+							size={12}
+							class="animate-spin {themeStore.current === 'hyv' ? 'text-accent' : 'text-amber-400'}"
+						/>
+						<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Refining...</span>
 					{:else}
-						<Sparkles size={15} />
+						<Sparkles
+							size={12}
+							class={themeStore.current === 'hyv' ? 'text-accent' : 'text-amber-400'}
+						/>
+						<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Refine</span>
 					{/if}
 				</button>
-			{/if}
+
+				<!-- Submit Button -->
+				<button
+					type="submit"
+					disabled={!inputQuery.trim()}
+					class="flex cursor-pointer items-center gap-1 border px-3.5 py-1.5 text-xs font-medium transition-all duration-150 disabled:pointer-events-none disabled:opacity-30 {themeStore.current ===
+					'hyv'
+						? 'border-accent bg-accent/20 text-accent hover:border-accent-strong hover:bg-accent/30 hover:text-accent-strong'
+						: 'rounded-lg bg-blue-600 font-semibold text-white hover:bg-blue-500'}"
+				>
+					<Plus size={13} />
+					<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>
+						{themeStore.current === 'hyv' ? 'Deploy' : 'Add Card'}
+					</span>
+				</button>
+			</div>
 		</div>
 
-		<!-- Add Card Button -->
-		<button
-			type="submit"
-			disabled={!itemName.trim()}
-			class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-blue-500 disabled:pointer-events-none disabled:opacity-40"
-		>
-			<Plus size={14} />
-			<span>Add Card</span>
-		</button>
+		<!-- Direct Text Only Add (Small fallback) -->
+		{#if inputQuery.trim()}
+			<button
+				type="button"
+				class="ml-2 cursor-pointer border border-line bg-bg-surface px-2.5 py-2 text-[11px] text-muted transition-colors hover:border-line-strong hover:text-text sm:text-xs {themeStore.current ===
+				'classic'
+					? 'rounded-lg border-zinc-700 bg-zinc-800'
+					: ''}"
+				onclick={handleAddDirect}
+				title="Add card as text-only badge without searching images"
+			>
+				Text Only
+			</button>
+		{/if}
 
-		<!-- Bulk Add with AI Button -->
+		<!-- Bulk Add Modal Trigger -->
 		<button
 			type="button"
-			class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-300 transition-all hover:bg-purple-500/20 hover:text-purple-200"
-			onclick={() => (isBulkModalOpen = true)}
-			title="Generate dozens of items at once with AI"
+			class="ml-2 flex shrink-0 cursor-pointer items-center gap-1 border border-line bg-bg-surface px-3 py-2 text-xs text-text shadow-xs transition-all duration-150 hover:border-accent hover:text-accent-strong {themeStore.current ===
+			'classic'
+				? 'rounded-xl border-zinc-700 bg-zinc-900 font-medium'
+				: ''}"
+			onclick={() => (bulkModalOpen = true)}
+			title="Bulk generate cards using AI entity lists"
 		>
-			<Sparkles size={14} class="text-purple-400" />
-			<span class="hidden sm:inline">Bulk Add</span>
-			<span class="sm:hidden">Bulk</span>
+			<Library size={12} class={themeStore.current === 'hyv' ? 'text-accent' : 'text-purple-400'} />
+			<span class="hidden sm:inline {themeStore.current === 'hyv' ? 'uppercase' : ''}">
+				{themeStore.current === 'hyv' ? 'BULK INGRESS' : 'Bulk Add'}
+			</span>
+			<span class="sm:hidden {themeStore.current === 'hyv' ? 'uppercase' : ''}">Bulk</span>
 		</button>
 	</form>
 
-	<!-- Quick-add from Global Card Stash if matches found -->
-	{#if matchingStashCards.length > 0}
-		<div
-			class="animate-in fade-in mt-2 flex flex-wrap items-center gap-1.5 px-1 text-xs duration-150"
-		>
-			<span class="flex items-center gap-1 text-[11px] font-medium text-purple-400">
-				<Library size={12} />
-				<span>In Stash:</span>
-			</span>
-			{#each matchingStashCards as stashCard (stashCard.id)}
-				<button
-					type="button"
-					class="flex cursor-pointer items-center gap-1.5 rounded-full border border-purple-500/40 bg-purple-950/40 px-2 py-0.5 text-[11px] text-purple-200 transition-all hover:border-purple-400 hover:bg-purple-900/60"
-					onclick={() => handleAddFromStash(stashCard)}
-					title="Click to add immediately from your stash without searching"
-				>
-					<img
-						src={stashCard.thumbnailUrl || stashCard.imageUrl}
-						alt=""
-						referrerpolicy="no-referrer"
-						class="h-3.5 w-3.5 rounded-full object-cover"
-					/>
-					<span>{stashCard.name}</span>
-					<Plus size={10} class="text-purple-400" />
-				</button>
-			{/each}
-		</div>
-	{/if}
-
-	{#if board.context}
-		<p
-			class="mt-1.5 flex items-center justify-center gap-1 px-2 text-center text-[11px] text-zinc-400 sm:justify-start sm:text-left"
-		>
-			<span class="inline-block h-1.5 w-1.5 rounded-full bg-blue-500"></span>
-			<span
-				>Searching with context: <strong class="font-medium text-zinc-300">{board.context}</strong
-				></span
-			>
-		</p>
-	{/if}
-
-	<!-- Dynamic AI Theme Suggestions -->
+	<!-- AI Next-Item Suggestions -->
 	<AiSuggestionsBar />
-</div>
+</section>
 
+<!-- Image Picker Modal -->
 <ImagePicker
 	open={pickerOpen}
 	initialQuery={pickerQuery}
-	itemName={activeItemName}
+	itemName={pickerItemName}
 	mode="create"
-	onselect={handleImageSelected}
-	onclose={handlePickerClose}
+	onselect={handleCardSelected}
+	onclose={() => (pickerOpen = false)}
 />
 
-<BulkAddModal open={isBulkModalOpen} onclose={() => (isBulkModalOpen = false)} />
+<!-- Bulk Add Modal -->
+<BulkAddModal open={bulkModalOpen} onclose={() => (bulkModalOpen = false)} />

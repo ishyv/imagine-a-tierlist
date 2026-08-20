@@ -1,42 +1,12 @@
-## Project Configuration
+# Agent Entry Point
 
-- **Language**: JavaScript (JSDoc)
-- **Package Manager**: bun
-- **Add-ons**: prettier, eslint, tailwindcss, sveltekit-adapter, drizzle, ai-tools, experimental
+This repository uses an agent knowledge module at `agent/`.
 
----
+Before changing code:
 
-You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
+1. Read `agent/README.md`.
+2. Use `agent/routing.md` to select the smallest relevant context packet.
+3. Follow `agent/protocols/before-work.md`.
+4. For code changes, follow `agent/protocols/verification.md` before claiming completion.
 
-## Available Svelte MCP Tools:
-
-### 1. list-sections
-
-Use this FIRST to discover all available documentation sections. Returns a structured list with titles, use_cases, and paths.
-When asked about Svelte or SvelteKit topics, ALWAYS use this tool at the start of the chat to find relevant sections.
-
-### 2. get-documentation
-
-Retrieves full documentation content for specific sections. Accepts single or multiple sections.
-After calling the list-sections tool, you MUST analyze the returned documentation sections (especially the use_cases field) and then use the get-documentation tool to fetch ALL documentation sections that are relevant for the user's task.
-
-### 3. svelte-autofixer
-
-Analyzes Svelte code and returns issues and suggestions.
-You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
-
-### 4. playground-link
-
-Generates a Svelte Playground link with the provided code.
-After completing the code, ask the user if they want a playground link. Only call this tool after user confirmation and NEVER if code was written to files in their project.
-
----
-
-## Build Troubleshooting
-
-### Windows Build: `@sveltejs/adapter-vercel`
-
-If `bun run build` hangs indefinitely at `Generating serverless function...`:
-
-- **Cause**: `@sveltejs/adapter-vercel` walks up to `C:\` for the `@vercel/nft` trace root.
-- **Fix**: In `node_modules/@sveltejs/adapter-vercel/index.js`, replace the `base` loop with `let base = process.cwd();` and ensure handler path generation uses `path.relative(ancestor, entry).replace(/\\/g, '/')`.
+Do not treat scattered project notes as canonical unless they are listed in `agent/MANIFEST.md` or linked from a selected workflow.

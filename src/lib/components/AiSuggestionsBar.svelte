@@ -1,6 +1,7 @@
 <script>
 	import { Sparkles, RefreshCw, Plus, Loader2, Check } from 'lucide-svelte';
 	import { board } from '#lib/stores/board.svelte.js';
+	import { themeStore } from '#lib/stores/theme.svelte.js';
 	import { fetchSuggestions } from '#lib/services/ai.js';
 	import { searchImages } from '#lib/services/imageSearch.js';
 
@@ -62,7 +63,7 @@
 			// Remove chip after brief animation
 			setTimeout(() => {
 				suggestions = suggestions.filter((s) => s !== itemName);
-			}, 1200);
+			}, 1000);
 		} catch (e) {
 			console.error('Failed to add suggestion:', e);
 			delete itemStatus[itemName];
@@ -71,50 +72,70 @@
 </script>
 
 {#if suggestions.length > 0 || isLoading}
-	<div class="mt-3 flex flex-wrap items-center gap-1.5 px-1 py-1 text-xs">
-		<div class="flex items-center gap-1 text-[11px] font-medium text-purple-400">
-			<Sparkles size={12} class="animate-pulse" />
-			<span>Ideas:</span>
+	<div
+		class="mt-3 flex flex-wrap items-center gap-1.5 {themeStore.current === 'hyv'
+			? 'font-mono text-[11px]'
+			: 'font-sans text-xs'}"
+	>
+		<div
+			class="flex items-center gap-1 text-muted-strong {themeStore.current === 'hyv'
+				? 'tracking-meta uppercase'
+				: 'font-medium'}"
+		>
+			<Sparkles size={11} class={themeStore.current === 'hyv' ? 'text-accent' : 'text-amber-400'} />
+			<span>{themeStore.current === 'hyv' ? 'SUGGESTED:' : 'Suggestions:'}</span>
 		</div>
 
 		{#if isLoading && suggestions.length === 0}
-			<div class="flex items-center gap-1.5 text-[11px] text-zinc-500">
-				<Loader2 size={12} class="animate-spin text-purple-400" />
-				<span>Finding suggestions for "{board.context || board.title}"...</span>
+			<div class="flex items-center gap-1.5 text-muted">
+				<Loader2
+					size={11}
+					class="animate-spin {themeStore.current === 'hyv' ? 'text-accent' : 'text-blue-400'}"
+				/>
+				<span>querying candidates for "{board.context || board.title}"...</span>
 			</div>
 		{:else}
 			{#each suggestions as item (item)}
 				<button
 					type="button"
 					disabled={itemStatus[item] === 'loading' || itemStatus[item] === 'added'}
-					class="group flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition-all {itemStatus[
+					class="group flex cursor-pointer items-center gap-1 border px-2 py-0.5 transition-all duration-150 {themeStore.current ===
+					'classic'
+						? 'rounded-full border-zinc-700 bg-zinc-800/80 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-700'
+						: 'border-line bg-bg-elev text-text-soft hover:border-accent hover:text-accent-strong'} {itemStatus[
 						item
 					] === 'added'
-						? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
-						: 'border-zinc-800 bg-zinc-900/90 text-zinc-300 hover:border-purple-500/60 hover:bg-purple-950/30 hover:text-purple-200'} disabled:pointer-events-none"
+						? 'border-signal bg-signal/10 text-signal'
+						: ''} disabled:pointer-events-none"
 					onclick={() => handleAddSuggestion(item)}
-					title="Click to instantly add to unranked cards"
+					title="Click to generate card immediately"
 				>
 					{#if itemStatus[item] === 'loading'}
-						<Loader2 size={10} class="animate-spin text-purple-400" />
+						<Loader2
+							size={9}
+							class="animate-spin {themeStore.current === 'hyv' ? 'text-accent' : 'text-blue-400'}"
+						/>
 					{:else if itemStatus[item] === 'added'}
-						<Check size={10} class="text-emerald-400" />
+						<Check size={9} class="text-signal" />
 					{:else}
-						<Plus size={10} class="text-zinc-500 group-hover:text-purple-300" />
+						<Plus size={9} class="text-muted group-hover:text-accent" />
 					{/if}
-					<span>{item}</span>
+					<span class={themeStore.current === 'hyv' ? 'lowercase' : ''}>{item}</span>
 				</button>
 			{/each}
 
 			<button
 				type="button"
 				disabled={isLoading}
-				class="cursor-pointer rounded-full p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-purple-300 disabled:opacity-40"
+				class="cursor-pointer border border-transparent p-1 text-muted transition-colors hover:text-accent disabled:opacity-40 {themeStore.current ===
+				'classic'
+					? 'rounded-full hover:bg-zinc-800'
+					: ''}"
 				onclick={loadSuggestions}
 				title="Get more suggestions"
 				aria-label="Refresh suggestions"
 			>
-				<RefreshCw size={11} class={isLoading ? 'animate-spin' : ''} />
+				<RefreshCw size={10} class={isLoading ? 'animate-spin' : ''} />
 			</button>
 		{/if}
 	</div>

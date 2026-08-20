@@ -1,17 +1,9 @@
 <script>
-	import {
-		Layers,
-		Search,
-		Plus,
-		Trash2,
-		X,
-		Check,
-		Download,
-		Upload,
-		Sparkles
-	} from 'lucide-svelte';
+	import { Layers, Search, Plus, Trash2, Check, Download, Upload, Maximize2 } from 'lucide-svelte';
 	import { board } from '#lib/stores/board.svelte.js';
 	import { cardStash } from '#lib/stores/cardStash.svelte.js';
+	import { themeStore } from '#lib/stores/theme.svelte.js';
+	import CornerBrackets from './ambient/CornerBrackets.svelte';
 
 	/**
 	 * @type {{
@@ -110,7 +102,7 @@
 
 {#if open}
 	<div
-		class="animate-in fade-in fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-xs duration-200"
+		class="fixed inset-0 z-50 flex justify-end bg-black/80 backdrop-blur-xs"
 		role="dialog"
 		aria-modal="true"
 		aria-label="Global Card Stash"
@@ -125,65 +117,93 @@
 
 		<!-- Slide-over Drawer Panel -->
 		<div
-			class="animate-in slide-in-from-right relative flex h-full w-full max-w-lg flex-col border-l border-zinc-800 bg-zinc-950 p-6 shadow-2xl duration-250 sm:max-w-md"
+			class="shadow-veil relative flex h-full w-full max-w-lg flex-col border-l border-line bg-bg-elev p-6 text-text sm:max-w-md {themeStore.current ===
+			'classic'
+				? 'border-zinc-800 bg-zinc-900 font-sans shadow-2xl'
+				: ''}"
 		>
+			{#if themeStore.current === 'hyv'}
+				<CornerBrackets size={16} />
+			{/if}
+
 			<!-- Header -->
-			<div class="flex items-center justify-between border-b border-zinc-800/80 pb-4">
-				<div class="flex items-center gap-2.5">
-					<div
-						class="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400"
-					>
-						<Layers size={18} />
-					</div>
+			<div
+				class="flex items-center justify-between border-b border-line pb-4 {themeStore.current ===
+				'hyv'
+					? 'font-mono'
+					: 'font-sans'}"
+			>
+				<div class="flex items-center gap-2">
+					<Layers
+						size={15}
+						class={themeStore.current === 'hyv' ? 'text-accent' : 'text-blue-400'}
+					/>
 					<div>
-						<h2 class="text-base font-semibold text-zinc-100">Global Card Stash</h2>
-						<p class="text-xs text-zinc-400">
-							{cardStash.cards.length} saved {cardStash.cards.length === 1 ? 'card' : 'cards'} across
-							all your lists
+						<h2
+							class="text-xs text-text {themeStore.current === 'hyv'
+								? 'tracking-meta uppercase'
+								: 'font-bold'}"
+						>
+							{themeStore.current === 'hyv' ? 'ASSET_ARCHIVE // GLOBAL_STASH' : 'Global Card Stash'}
+						</h2>
+						<p class="text-[10px] text-muted">
+							{cardStash.cards.length} indexed {cardStash.cards.length === 1 ? 'card' : 'cards'}
 						</p>
 					</div>
 				</div>
 
 				<button
 					type="button"
-					class="cursor-pointer rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+					class="cursor-pointer text-xs text-muted hover:text-text"
 					onclick={onclose}
 					aria-label="Close"
 				>
-					<X size={18} />
+					&times;
 				</button>
 			</div>
 
 			<!-- Search & Filter Controls -->
-			<div class="mt-4 space-y-3">
+			<div
+				class="mt-4 space-y-3 text-xs {themeStore.current === 'classic'
+					? 'font-sans'
+					: 'font-mono'}"
+			>
 				<div class="relative">
-					<Search size={14} class="absolute top-1/2 left-3 -translate-y-1/2 text-zinc-500" />
+					<Search size={12} class="absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
 					<input
 						type="text"
 						bind:value={searchQuery}
-						placeholder="Search cards in your stash..."
-						class="w-full rounded-lg border border-zinc-800 bg-zinc-900/90 py-2 pr-3 pl-9 text-xs text-zinc-100 placeholder-zinc-500 transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-hidden"
+						placeholder="Filter archived cards..."
+						class="w-full border border-line bg-bg py-1.5 pr-3 pl-8 text-xs text-text placeholder:text-muted-strong focus:border-accent focus:outline-none {themeStore.current ===
+						'classic'
+							? 'rounded-lg border-zinc-700 bg-zinc-950'
+							: ''}"
 					/>
 					{#if searchQuery}
 						<button
 							type="button"
-							class="absolute top-1/2 right-2.5 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+							class="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted hover:text-text"
 							onclick={() => (searchQuery = '')}
 						>
-							<X size={12} />
+							&times;
 						</button>
 					{/if}
 				</div>
 
-				<div class="flex items-center justify-between text-xs">
-					<div class="flex items-center gap-1 text-[11px] text-zinc-400">
-						<span>Sort:</span>
+				<div class="flex items-center justify-between text-[11px]">
+					<div class="flex items-center gap-1 text-muted">
+						<span class={themeStore.current === 'hyv' ? 'tracking-meta uppercase' : 'font-medium'}>
+							Sort:
+						</span>
 						<select
 							bind:value={sortBy}
-							class="cursor-pointer rounded border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300 focus:border-purple-500 focus:outline-hidden"
+							class="cursor-pointer border border-line bg-bg px-2 py-0.5 text-[11px] text-text-soft focus:border-accent focus:outline-none {themeStore.current ===
+							'classic'
+								? 'rounded-md border-zinc-700 bg-zinc-800'
+								: ''}"
 						>
-							<option value="recent">Recently Used</option>
-							<option value="usage">Most Used</option>
+							<option value="recent">Recently Indexed</option>
+							<option value="usage">Most Deployed</option>
 							<option value="name">Alphabetical</option>
 						</select>
 					</div>
@@ -191,10 +211,10 @@
 					{#if filteredCards.length > 0}
 						<button
 							type="button"
-							class="cursor-pointer text-[11px] font-medium text-purple-400 transition-colors hover:text-purple-300 hover:underline"
+							class="cursor-pointer text-accent hover:text-accent-strong hover:underline"
 							onclick={handleAddAllFiltered}
 						>
-							+ Add all ({filteredCards.length}) to board
+							+ add all ({filteredCards.length})
 						</button>
 					{/if}
 				</div>
@@ -203,21 +223,30 @@
 			<!-- Cards List -->
 			<div class="mt-4 flex-1 overflow-y-auto pr-1">
 				{#if cardStash.cards.length === 0}
-					<div class="flex h-64 flex-col items-center justify-center text-center">
-						<div
-							class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-zinc-500"
+					<div
+						class="flex h-64 flex-col items-center justify-center text-center {themeStore.current ===
+						'hyv'
+							? 'font-mono'
+							: 'font-sans'}"
+					>
+						<p
+							class="text-xs text-muted-strong {themeStore.current === 'hyv'
+								? 'tracking-meta uppercase'
+								: 'font-semibold'}"
 						>
-							<Sparkles size={20} />
-						</div>
-						<p class="mt-3 text-sm font-medium text-zinc-300">Your Card Stash is empty</p>
-						<p class="mt-1 max-w-xs text-xs text-zinc-500">
-							Every card you create via search, direct URL, or AI bulk add will be automatically
-							saved here for 1-click re-use!
+							{themeStore.current === 'hyv' ? '// ARCHIVE_EMPTY' : 'No Cards Stashed'}
+						</p>
+						<p class="mt-2 max-w-xs text-xs text-muted">
+							All cards generated via search, direct URL, or AI bulk add persist here automatically
+							for instant deployment across boards.
 						</p>
 					</div>
 				{:else if filteredCards.length === 0}
 					<div
-						class="flex h-48 flex-col items-center justify-center text-center text-xs text-zinc-500"
+						class="flex h-48 flex-col items-center justify-center text-center text-xs text-muted {themeStore.current ===
+						'hyv'
+							? 'font-mono'
+							: 'font-sans'}"
 					>
 						<p>No cards match "{searchQuery}"</p>
 					</div>
@@ -225,7 +254,10 @@
 					<div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
 						{#each filteredCards as card (card.id)}
 							<div
-								class="group relative flex aspect-square flex-col justify-end overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 text-left shadow-xs transition-all hover:border-purple-500/60 hover:ring-1 hover:ring-purple-500/40"
+								class="group relative flex aspect-square flex-col justify-end border border-line bg-bg transition-all hover:border-accent {themeStore.current ===
+								'classic'
+									? 'overflow-hidden rounded-xl border-zinc-800 bg-zinc-950'
+									: ''}"
 							>
 								<!-- Thumbnail -->
 								<img
@@ -234,50 +266,90 @@
 									loading="lazy"
 									decoding="async"
 									referrerpolicy="no-referrer"
-									class="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+									class="pointer-events-none absolute inset-0 h-full w-full object-cover"
 								/>
 
-								<!-- Top Overlay Actions -->
+								<!-- Top action overlay buttons -->
 								<div
-									class="absolute top-1.5 right-1.5 z-20 opacity-0 transition-opacity group-hover:opacity-100"
+									class="absolute top-1 right-1 z-20 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
 								>
 									<button
 										type="button"
-										class="cursor-pointer rounded-full bg-black/70 p-1 text-zinc-400 backdrop-blur-xs transition-colors hover:bg-red-500/80 hover:text-white"
+										class="cursor-pointer border border-line bg-bg/90 p-1 text-muted hover:border-accent hover:text-accent-strong {themeStore.current ===
+										'classic'
+											? 'rounded-md'
+											: ''}"
+										onclick={() => {
+											const existing = board.items.find(
+												(i) => i.name.toLowerCase() === card.name.toLowerCase()
+											);
+											if (existing) {
+												board.openZoom(existing);
+											} else {
+												const tempItem = {
+													id: card.id,
+													name: card.name,
+													imageUrl: card.imageUrl,
+													sourceUrl: card.sourceUrl,
+													tierId: null,
+													order: 0
+												};
+												board.openZoom(tempItem);
+											}
+										}}
+										title="Inspect / Zoom card"
+										aria-label="Inspect card"
+									>
+										<Maximize2 size={10} />
+									</button>
+									<button
+										type="button"
+										class="cursor-pointer border border-line bg-bg/90 p-1 text-muted hover:border-status-fail hover:text-status-fail {themeStore.current ===
+										'classic'
+											? 'rounded-md'
+											: ''}"
 										onclick={() => cardStash.removeCard(card.id)}
-										title="Delete card from stash"
+										title="Purge card from stash"
 										aria-label="Delete card"
 									>
-										<Trash2 size={11} />
+										<Trash2 size={10} />
 									</button>
 								</div>
 
 								<!-- Bottom Action Banner -->
 								<div
-									class="relative z-10 w-full bg-gradient-to-t from-black/95 via-black/70 to-transparent p-2"
+									class="relative z-10 w-full bg-gradient-to-t from-bg via-bg/85 to-transparent p-2 {themeStore.current ===
+									'hyv'
+										? 'font-mono'
+										: 'font-sans'}"
 								>
-									<p class="truncate text-[11px] font-medium text-white/95 drop-shadow-sm">
+									<p
+										class="truncate text-[10px] text-text {themeStore.current === 'hyv'
+											? 'lowercase'
+											: 'font-medium'}"
+									>
 										{card.name}
 									</p>
 									{#if card.context}
-										<p class="truncate text-[9px] text-zinc-400">{card.context}</p>
+										<p class="truncate text-[8px] text-muted">{card.context}</p>
 									{/if}
 
 									<button
 										type="button"
-										class="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-md py-1 text-[10px] font-medium transition-all {addedFeedback[
-											card.id
-										]
-											? 'bg-emerald-500 text-white'
-											: 'bg-purple-600 text-white hover:bg-purple-500'}"
+										class="mt-1 flex w-full cursor-pointer items-center justify-center gap-1 border py-0.5 text-[9px] transition-all {themeStore.current ===
+										'classic'
+											? 'rounded-md font-semibold'
+											: 'uppercase'} {addedFeedback[card.id]
+											? 'border-signal bg-signal/20 text-signal'
+											: 'border-accent/40 bg-accent/10 text-accent hover:border-accent hover:bg-accent/20 hover:text-accent-strong'}"
 										onclick={() => handleAddCard(card)}
 									>
 										{#if addedFeedback[card.id]}
-											<Check size={10} />
+											<Check size={9} />
 											<span>Added!</span>
 										{:else}
-											<Plus size={10} />
-											<span>Add to Board</span>
+											<Plus size={9} />
+											<span>Deploy</span>
 										{/if}
 									</button>
 								</div>
@@ -289,27 +361,30 @@
 
 			<!-- Footer Backup Controls -->
 			<div
-				class="mt-4 flex items-center justify-between border-t border-zinc-800/80 pt-3 text-[11px] text-zinc-500"
+				class="mt-4 flex items-center justify-between border-t border-line pt-3 text-[10px] text-muted {themeStore.current ===
+				'hyv'
+					? 'tracking-meta font-mono'
+					: 'font-sans'}"
 			>
-				<div class="flex items-center gap-2">
+				<div class="flex items-center gap-3">
 					<button
 						type="button"
-						class="flex cursor-pointer items-center gap-1 text-zinc-400 hover:text-zinc-200"
+						class="flex cursor-pointer items-center gap-1 hover:text-text"
 						onclick={handleExportStash}
 						title="Export stash JSON backup"
 					>
-						<Download size={12} />
-						<span>Export</span>
+						<Download size={10} />
+						<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Export</span>
 					</button>
 
 					<button
 						type="button"
-						class="flex cursor-pointer items-center gap-1 text-zinc-400 hover:text-zinc-200"
+						class="flex cursor-pointer items-center gap-1 hover:text-text"
 						onclick={() => fileInput?.click()}
 						title="Import stash JSON backup"
 					>
-						<Upload size={12} />
-						<span>Import</span>
+						<Upload size={10} />
+						<span class={themeStore.current === 'hyv' ? 'uppercase' : ''}>Import</span>
 					</button>
 					<input
 						type="file"
@@ -323,14 +398,16 @@
 				{#if cardStash.cards.length > 0}
 					<button
 						type="button"
-						class="cursor-pointer text-zinc-500 hover:text-red-400"
+						class="cursor-pointer hover:text-status-fail {themeStore.current === 'hyv'
+							? 'uppercase'
+							: ''}"
 						onclick={() => {
-							if (confirm('Are you sure you want to clear your entire Card Stash?')) {
+							if (confirm('Purge entire Global Card Stash? This cannot be undone.')) {
 								cardStash.clearStash();
 							}
 						}}
 					>
-						Clear Stash
+						{themeStore.current === 'hyv' ? 'PURGE_STASH' : 'Clear Stash'}
 					</button>
 				{/if}
 			</div>

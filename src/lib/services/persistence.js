@@ -3,9 +3,77 @@
  * @typedef {import('#lib/types.js').Board} Board
  */
 
-export const STORAGE_KEY = 'tierlist-board-v1';
-export const BOARDS_REGISTRY_KEY = 'tierlist-boards-registry-v1';
-export const CURRENT_VERSION = 1;
+export const STORAGE_KEY = 'tierlist-board-v2';
+export const LEGACY_STORAGE_KEY = 'tierlist-board-v1';
+export const BOARDS_REGISTRY_KEY = 'tierlist-boards-registry-v2';
+export const LEGACY_BOARDS_REGISTRY_KEY = 'tierlist-boards-registry-v1';
+export const CURRENT_VERSION = 2;
+
+/**
+ * Standard gaming prestige color mapping
+ */
+export const PRESTIGE_TIER_COLORS = {
+	s: '#FFD000',
+	a: '#A335EE',
+	b: '#0070DD',
+	c: '#1EFF00',
+	d: '#CD7F32',
+	f: '#808080'
+};
+
+/**
+ * Legacy to Prestige color migration map
+ */
+export const LEGACY_COLOR_MIGRATION = {
+	'#b64a38': '#FFD000',
+	'#ef4444': '#FFD000',
+	'#f87171': '#FFD000',
+	'#f59e0b': '#FFD000',
+	'#c77728': '#A335EE',
+	'#f97316': '#A335EE',
+	'#fb923c': '#A335EE',
+	'#a855f7': '#A335EE',
+	'#8b5cf6': '#A335EE',
+	'#c79c57': '#0070DD',
+	'#eab308': '#0070DD',
+	'#facc15': '#0070DD',
+	'#3b82f6': '#0070DD',
+	'#60a5fa': '#0070DD',
+	'#738f61': '#1EFF00',
+	'#22c55e': '#1EFF00',
+	'#4ade80': '#1EFF00',
+	'#10b981': '#1EFF00',
+	'#4a7c87': '#CD7F32',
+	'#b45309': '#CD7F32',
+	'#59616d': '#808080',
+	'#94a3b8': '#808080',
+	'#475569': '#808080'
+};
+
+/**
+ * Migrates a tier color to the modern gaming prestige progression
+ * @param {string} label
+ * @param {string} color
+ * @param {number} version
+ * @returns {string}
+ */
+export function normalizeTierColor(label, color, version) {
+	if (version >= CURRENT_VERSION && color) {
+		return color;
+	}
+
+	const normalizedLabel = (label || '').trim().toLowerCase();
+	if (normalizedLabel in PRESTIGE_TIER_COLORS) {
+		return PRESTIGE_TIER_COLORS[/** @type {keyof typeof PRESTIGE_TIER_COLORS} */ (normalizedLabel)];
+	}
+
+	const lowerColor = (color || '').toLowerCase();
+	if (lowerColor in LEGACY_COLOR_MIGRATION) {
+		return LEGACY_COLOR_MIGRATION[/** @type {keyof typeof LEGACY_COLOR_MIGRATION} */ (lowerColor)];
+	}
+
+	return color || '#0070DD';
+}
 
 /**
  * @typedef {Object} BoardSummary
@@ -18,24 +86,32 @@ export const CURRENT_VERSION = 1;
  */
 
 /**
- * Validates and sanitizes raw board data
+ * Validates, sanitizes, and upgrades raw board data
  * @param {any} raw
  * @returns {Board | null}
  */
 export function sanitizeBoard(raw) {
 	if (!raw || typeof raw !== 'object') return null;
 
+	const boardVersion = typeof raw.version === 'number' ? raw.version : 1;
+
 	const validTiers = Array.isArray(raw.tiers)
 		? raw.tiers
 				.filter(/** @param {any} t */ (t) => t && typeof t === 'object' && typeof t.id === 'string')
 				.map(
-					/** @param {any} t @param {number} idx */ (t, idx) => ({
-						id: String(t.id),
-						label: String(t.label || 'Tier').slice(0, 30),
-						color: String(t.color || '#3b82f6'),
-						order: typeof t.order === 'number' ? t.order : idx,
-						imageUrl: t.imageUrl ? String(t.imageUrl).trim() : undefined
-					})
+					/** @param {any} t @param {number} idx */ (t, idx) => {
+						const label = String(t.label || 'Tier').slice(0, 30);
+						const initialColor = String(t.color || '#0070DD');
+						const migratedColor = normalizeTierColor(label, initialColor, boardVersion);
+
+						return {
+							id: String(t.id),
+							label,
+							color: migratedColor,
+							order: typeof t.order === 'number' ? t.order : idx,
+							imageUrl: t.imageUrl ? String(t.imageUrl).trim() : undefined
+						};
+					}
 				)
 		: [];
 
@@ -60,23 +136,35 @@ export function sanitizeBoard(raw) {
 		context: typeof raw.context === 'string' ? raw.context : '',
 		tiers: validTiers,
 		items: validItems,
-		version: typeof raw.version === 'number' ? raw.version : CURRENT_VERSION
+		version: CURRENT_VERSION
 	};
 }
 
 /**
- * Loads the active board from localStorage
+ * Loads the active board from localStorage (with v1 fallback migration)
  * @returns {Board | null}
  */
 export function loadBoardFromStorage() {
 	if (typeof window === 'undefined') return null;
 
 	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
+		let raw = localStorage.getItem(STORAGE_KEY);
+		if (!raw) {
+			// Check legacy key for existing user data
+			raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+		}
+
 		if (!raw) return null;
 
 		const parsed = JSON.parse(raw);
-		return sanitizeBoard(parsed);
+		const sanitized = sanitizeBoard(parsed);
+
+		if (sanitized) {
+			// Write upgraded structure to v2 key
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+		}
+
+		return sanitized;
 	} catch (e) {
 		console.warn('Failed to load tier list board from localStorage:', e);
 	}
@@ -99,110 +187,100 @@ export function saveBoardToStorage(board) {
 		// Also save in multi-board registry
 		saveBoardToRegistry(sanitized);
 	} catch (e) {
-		console.warn('Failed to save tier list board to localStorage (possibly quota exceeded):', e);
+		console.warn('Failed to save tier list board to localStorage:', e);
 	}
 }
 
 /**
- * Clears active board from localStorage
- */
-export function clearBoardStorage() {
-	if (typeof window === 'undefined') return;
-
-	try {
-		localStorage.removeItem(STORAGE_KEY);
-	} catch (e) {
-		console.warn('Failed to clear board from localStorage:', e);
-	}
-}
-
-/**
- * Loads the list of all saved boards from the registry
+ * Retrieves the registry list of all saved boards
  * @returns {BoardSummary[]}
  */
 export function getBoardsRegistry() {
 	if (typeof window === 'undefined') return [];
+
 	try {
-		const raw = localStorage.getItem(BOARDS_REGISTRY_KEY);
+		let raw = localStorage.getItem(BOARDS_REGISTRY_KEY);
+		if (!raw) {
+			raw = localStorage.getItem(LEGACY_BOARDS_REGISTRY_KEY);
+		}
+
 		if (!raw) return [];
+
 		const parsed = JSON.parse(raw);
-		return Array.isArray(parsed)
-			? parsed.filter((b) => b && typeof b === 'object' && typeof b.id === 'string')
-			: [];
+		if (!Array.isArray(parsed)) return [];
+
+		return parsed.filter(
+			(b) => b && typeof b === 'object' && typeof b.id === 'string' && typeof b.title === 'string'
+		);
 	} catch (e) {
-		console.warn('Failed to load boards registry:', e);
+		console.warn('Failed to get boards registry:', e);
 		return [];
 	}
 }
 
 /**
- * Saves or updates a board in the multi-board registry
+ * Saves or updates a board in the global multi-board registry
  * @param {Board} board
  */
 export function saveBoardToRegistry(board) {
-	if (typeof window === 'undefined' || !board || !board.id) return;
+	if (typeof window === 'undefined' || !board) return;
+
 	try {
-		const sanitized = sanitizeBoard(board);
-		if (!sanitized) return;
-
-		// Save full board data under board-specific key
-		localStorage.setItem(`tierlist-board-${sanitized.id}`, JSON.stringify(sanitized));
-
-		// Update registry index
 		const registry = getBoardsRegistry();
-		const existingIndex = registry.findIndex((b) => b.id === sanitized.id);
-
 		const summary = {
-			id: sanitized.id,
-			title: sanitized.title || 'Untitled Board',
-			context: sanitized.context || '',
-			cardCount: sanitized.items.length,
-			tierCount: sanitized.tiers.length,
+			id: board.id,
+			title: board.title,
+			context: board.context,
+			cardCount: board.items.length,
+			tierCount: board.tiers.length,
 			updatedAt: Date.now()
 		};
 
-		if (existingIndex >= 0) {
-			registry[existingIndex] = summary;
+		const existingIdx = registry.findIndex((b) => b.id === board.id);
+		if (existingIdx >= 0) {
+			registry[existingIdx] = summary;
 		} else {
 			registry.unshift(summary);
 		}
 
-		// Cap registry to max 40 boards to protect storage quota
-		const cappedRegistry = registry.slice(0, 40);
-		localStorage.setItem(BOARDS_REGISTRY_KEY, JSON.stringify(cappedRegistry));
+		localStorage.setItem(BOARDS_REGISTRY_KEY, JSON.stringify(registry));
+		localStorage.setItem(`board-data-${board.id}`, JSON.stringify(board));
 	} catch (e) {
 		console.warn('Failed to save board to registry:', e);
 	}
 }
 
 /**
- * Loads a specific board by its ID
+ * Loads a full board by its unique ID
  * @param {string} boardId
  * @returns {Board | null}
  */
 export function loadBoardById(boardId) {
 	if (typeof window === 'undefined' || !boardId) return null;
+
 	try {
-		const raw = localStorage.getItem(`tierlist-board-${boardId}`);
+		const raw = localStorage.getItem(`board-data-${boardId}`);
 		if (!raw) return null;
+
 		const parsed = JSON.parse(raw);
 		return sanitizeBoard(parsed);
 	} catch (e) {
 		console.warn(`Failed to load board ${boardId}:`, e);
+		return null;
 	}
-	return null;
 }
 
 /**
- * Deletes a board from the registry and storage
+ * Deletes a board from the saved registry and its storage
  * @param {string} boardId
  */
 export function deleteBoardFromRegistry(boardId) {
 	if (typeof window === 'undefined' || !boardId) return;
+
 	try {
-		localStorage.removeItem(`tierlist-board-${boardId}`);
 		const registry = getBoardsRegistry().filter((b) => b.id !== boardId);
 		localStorage.setItem(BOARDS_REGISTRY_KEY, JSON.stringify(registry));
+		localStorage.removeItem(`board-data-${boardId}`);
 	} catch (e) {
 		console.warn(`Failed to delete board ${boardId}:`, e);
 	}

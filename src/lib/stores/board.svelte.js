@@ -17,17 +17,16 @@ import { cardStash } from '#lib/stores/cardStash.svelte.js';
  */
 
 export const TIER_COLOR_PALETTE = [
-	'#ef4444', // Red
-	'#f97316', // Orange
-	'#eab308', // Yellow
-	'#84cc16', // Lime
-	'#10b981', // Emerald
-	'#06b6d4', // Cyan
-	'#3b82f6', // Blue
-	'#8b5cf6', // Purple
-	'#ec4899', // Pink
-	'#64748b', // Slate
-	'#27272a' // Dark Zinc
+	'#FFD000', // Mythic Gold (Transcendent / Artifact)
+	'#A335EE', // Amethyst Purple (Epic / Master)
+	'#0070DD', // Cerulean Blue (Rare / Adept)
+	'#1EFF00', // Jade Green (Uncommon)
+	'#CD7F32', // Weathered Bronze (Common)
+	'#808080', // Slate Iron (Poor / Junk)
+	'#FF8000', // Legendary Orange
+	'#E6CC80', // Heirloom Cream
+	'#E53935', // Crimson Hazard
+	'#22272E' // Dark Obsidian
 ];
 
 /**
@@ -35,12 +34,12 @@ export const TIER_COLOR_PALETTE = [
  */
 export function createDefaultTiers() {
 	return [
-		{ id: 'tier-s', label: 'S', color: '#ef4444', order: 0 },
-		{ id: 'tier-a', label: 'A', color: '#f97316', order: 1 },
-		{ id: 'tier-b', label: 'B', color: '#eab308', order: 2 },
-		{ id: 'tier-c', label: 'C', color: '#84cc16', order: 3 },
-		{ id: 'tier-d', label: 'D', color: '#06b6d4', order: 4 },
-		{ id: 'tier-f', label: 'F', color: '#64748b', order: 5 }
+		{ id: 'tier-s', label: 'S', color: '#FFD000', order: 0 },
+		{ id: 'tier-a', label: 'A', color: '#A335EE', order: 1 },
+		{ id: 'tier-b', label: 'B', color: '#0070DD', order: 2 },
+		{ id: 'tier-c', label: 'C', color: '#1EFF00', order: 3 },
+		{ id: 'tier-d', label: 'D', color: '#CD7F32', order: 4 },
+		{ id: 'tier-f', label: 'F', color: '#808080', order: 5 }
 	];
 }
 
@@ -72,6 +71,8 @@ class BoardStore {
 	initialized = $state(false);
 	lastSavedAt = $state(Date.now());
 	isSaved = $state(true);
+	/** @type {Item | null} */
+	zoomedItem = $state(null);
 
 	constructor() {
 		// Initialization handled via init() in browser mount
@@ -160,7 +161,7 @@ class BoardStore {
 	 * @param {string} [label]
 	 * @param {string} [color]
 	 */
-	addTierAbove(targetTierId, label = 'NEW', color = '#3b82f6') {
+	addTierAbove(targetTierId, label = 'NEW', color = '#0070DD') {
 		const targetIndex = this.tiers.findIndex((t) => t.id === targetTierId);
 		if (targetIndex === -1) return this.addTier(label, color);
 
@@ -183,7 +184,7 @@ class BoardStore {
 	 * @param {string} [label]
 	 * @param {string} [color]
 	 */
-	addTierBelow(targetTierId, label = 'NEW', color = '#3b82f6') {
+	addTierBelow(targetTierId, label = 'NEW', color = '#0070DD') {
 		const targetIndex = this.tiers.findIndex((t) => t.id === targetTierId);
 		if (targetIndex === -1) return this.addTier(label, color);
 
@@ -439,8 +440,65 @@ class BoardStore {
 	 * @param {string} itemId
 	 */
 	deleteItem(itemId) {
+		if (this.zoomedItem?.id === itemId) {
+			this.closeZoom();
+		}
 		this.items = this.items.filter((i) => i.id !== itemId);
 		this.persist();
+	}
+
+	/**
+	 * Opens global zoom / inspection modal for a card
+	 * @param {Item} item
+	 */
+	openZoom(item) {
+		this.zoomedItem = item;
+	}
+
+	/**
+	 * Closes global zoom / inspection modal
+	 */
+	closeZoom() {
+		this.zoomedItem = null;
+	}
+
+	/**
+	 * Navigates to next item on the board
+	 */
+	nextZoomedItem() {
+		if (!this.zoomedItem || this.items.length <= 1) return;
+		const currentIndex = this.items.findIndex((i) => i.id === this.zoomedItem?.id);
+		if (currentIndex === -1) return;
+		const nextIndex = (currentIndex + 1) % this.items.length;
+		this.zoomedItem = this.items[nextIndex];
+	}
+
+	/**
+	 * Navigates to previous item on the board
+	 */
+	prevZoomedItem() {
+		if (!this.zoomedItem || this.items.length <= 1) return;
+		const currentIndex = this.items.findIndex((i) => i.id === this.zoomedItem?.id);
+		if (currentIndex === -1) return;
+		const prevIndex = (currentIndex - 1 + this.items.length) % this.items.length;
+		this.zoomedItem = this.items[prevIndex];
+	}
+
+	/**
+	 * Sets the tier for the currently zoomed item
+	 * @param {string | null} tierId
+	 */
+	setZoomedItemTier(tierId) {
+		if (!this.zoomedItem) return;
+		const itemsInTier = this.getItemsForTier(tierId);
+		this.updateItem(this.zoomedItem.id, {
+			tierId,
+			order: itemsInTier.length
+		});
+		const updated = this.items.find((i) => i.id === this.zoomedItem?.id);
+		if (updated) {
+			this.zoomedItem = updated;
+		}
 	}
 
 	/**
