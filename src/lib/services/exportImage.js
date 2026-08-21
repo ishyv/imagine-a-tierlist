@@ -4,8 +4,7 @@
  * Synchronized with the hyvui operator aesthetic (near-black palette, IBM Plex Mono & Serif typography).
  */
 
-import { getTierColor } from '#lib/stores/board.svelte.js';
-import { themeStore } from '#lib/stores/theme.svelte.js';
+import { getTierColor } from '#lib/services/tierColors.js';
 
 /**
  * Calculates luminance of a hex color to determine text color
@@ -34,47 +33,129 @@ export function getContrastTextColor(hexColor) {
 }
 
 /**
- * Loads an image into an HTMLImageElement with CORS handling
- * @param {string} url
+ * Helper to load an HTMLImageElement from a source URL
+ * @param {string} src
+ * @param {boolean} useCors
  * @returns {Promise<HTMLImageElement | null>}
  */
-function loadImage(url) {
+function loadToElement(src, useCors) {
 	return new Promise((resolve) => {
-		if (!url) {
-			resolve(null);
-			return;
-		}
-
 		const img = new window.Image();
-		img.crossOrigin = 'anonymous';
+		if (useCors) {
+			img.crossOrigin = 'anonymous';
+		}
+		img.referrerPolicy = 'no-referrer';
 
-		let isSettled = false;
-
+		let settled = false;
 		const timer = setTimeout(() => {
-			if (!isSettled) {
-				isSettled = true;
+			if (!settled) {
+				settled = true;
 				resolve(null);
 			}
-		}, 3500); // 3.5s timeout per image
+		}, 6000);
 
 		img.onload = () => {
-			if (!isSettled) {
-				isSettled = true;
+			if (!settled) {
+				settled = true;
 				clearTimeout(timer);
 				resolve(img);
 			}
 		};
 
 		img.onerror = () => {
-			if (!isSettled) {
-				isSettled = true;
+			if (!settled) {
+				settled = true;
 				clearTimeout(timer);
 				resolve(null);
 			}
 		};
 
-		img.src = url;
+		img.src = src;
 	});
+}
+
+/**
+ * Loads an image from a URL into an HTMLImageElement safely for canvas export.
+ * Employs direct CORS fetch and transparent server-side proxy fallback (/api/images/proxy)
+ * to avoid canvas tainting and CORS rejection across external CDNs.
+ *
+ * @param {string} url
+ * @returns {Promise<{ img: HTMLImageElement; cleanup?: () => void } | null>}
+ */
+async function loadImageSafe(url) {
+	if (!url || typeof url !== 'string') return null;
+
+	const trimmed = url.trim();
+	if (!trimmed) return null;
+
+	// 1. Data URLs and Blob URLs can be loaded directly without CORS headers
+	if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+		const directImg = await loadToElement(trimmed, false);
+		return directImg ? { img: directImg } : null;
+	}
+
+	// 2. Relative URLs (same-origin static assets)
+	if (trimmed.startsWith('/')) {
+		const directImg = await loadToElement(trimmed, false);
+		return directImg ? { img: directImg } : null;
+	}
+
+	// 3. Attempt direct fetch with CORS (fastest path when remote server provides CORS headers)
+	try {
+		const directFetchRes = await fetch(trimmed, {
+			mode: 'cors',
+			credentials: 'omit',
+			headers: { Accept: 'image/*,*/*' }
+		});
+
+		if (directFetchRes.ok) {
+			const blob = await directFetchRes.blob();
+			if (blob && blob.size > 0) {
+				const objectUrl = URL.createObjectURL(blob);
+				const directImg = await loadToElement(objectUrl, false);
+				if (directImg) {
+					return {
+						img: directImg,
+						cleanup: () => URL.revokeObjectURL(objectUrl)
+					};
+				}
+				URL.revokeObjectURL(objectUrl);
+			}
+		}
+	} catch {
+		// Fall through to direct image / proxy fallback
+	}
+
+	// 4. Try loading direct HTMLImageElement with crossOrigin='anonymous'
+	const directImg = await loadToElement(trimmed, true);
+	if (directImg) {
+		return { img: directImg };
+	}
+
+	// 5. Fallback: Fetch via server-side image proxy to bypass CORS restrictions & hotlink blockers
+	try {
+		const proxyUrl = `/api/images/proxy?url=${encodeURIComponent(trimmed)}`;
+		const proxyRes = await fetch(proxyUrl);
+
+		if (proxyRes.ok) {
+			const blob = await proxyRes.blob();
+			if (blob && blob.size > 0) {
+				const objectUrl = URL.createObjectURL(blob);
+				const proxiedImg = await loadToElement(objectUrl, false);
+				if (proxiedImg) {
+					return {
+						img: proxiedImg,
+						cleanup: () => URL.revokeObjectURL(objectUrl)
+					};
+				}
+				URL.revokeObjectURL(objectUrl);
+			}
+		}
+	} catch (e) {
+		console.warn(`[exportImage] Failed to load image via proxy for ${trimmed}:`, e);
+	}
+
+	return null;
 }
 
 /**
@@ -84,7 +165,7 @@ function loadImage(url) {
  * @param {'hyv' | 'classic' | string} [theme]
  * @returns {Promise<boolean>}
  */
-export async function exportBoardAsPng(board, onProgress, theme = themeStore.current) {
+export async function exportBoardAsPng(board, onProgress, theme = 'hyv') {
 	if (typeof window === 'undefined') return false;
 
 	const tiers = board.tiers || [];
@@ -145,197 +226,257 @@ export async function exportBoardAsPng(board, onProgress, theme = themeStore.cur
 		ctx.fillText(`// CONTEXT: ${board.context.toUpperCase()}`, padding, padding + 48);
 	}
 
-	// 3. Preload all Item & Tier Badge images safely with timeout
-	const tierImageMap = new Map();
-	for (const tier of tiers) {
-		if (tier.imageUrl) {
-			const img = await loadImage(tier.imageUrl);
-			tierImageMap.set(tier.id, img);
-		}
-	}
-
+	// 3. Preload all Item & Tier Badge images concurrently with live progress updates
 	const rankedItems = (board.items || []).filter((i) => i && i.tierId);
-	const totalImages = rankedItems.length + tiers.filter((t) => t.imageUrl).length;
-	let loadedCount = 0;
-	const imageMap = new Map();
+	const tiersWithImages = tiers.filter((t) => t.imageUrl);
+	const totalImages = rankedItems.length + tiersWithImages.length;
 
-	for (const item of rankedItems) {
-		if (item.imageUrl) {
-			const img = await loadImage(item.imageUrl);
-			imageMap.set(item.id, img);
-		}
+	let loadedCount = 0;
+	const incrementProgress = () => {
 		loadedCount++;
 		onProgress?.(totalImages > 0 ? (loadedCount / totalImages) * 100 : 100);
-	}
+	};
 
-	// 4. Render Tier Rows
-	let currentY = padding + headerHeight;
+	/** @type {Array<() => void>} */
+	const cleanupFns = [];
+	const tierImageMap = new Map();
+	const imageMap = new Map();
 
-	for (let tIdx = 0; tIdx < tiers.length; tIdx++) {
-		const tier = tiers[tIdx];
-		const tHeight = tierHeights[tIdx];
-		const tierColor = getTierColor(tier, theme);
-		const tierItems = (board.items || [])
-			.filter((i) => i && i.tierId === tier.id)
-			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-		// Row background
-		ctx.fillStyle = theme === 'classic' ? '#18181b' : '#0d1014';
-		ctx.fillRect(padding, currentY, boardWidth - padding * 2, tHeight);
-
-		// Left Tier Label Block
-		ctx.fillStyle = tierColor;
-		ctx.fillRect(padding, currentY, tierHeaderWidth, tHeight);
-
-		const textColor = getContrastTextColor(tierColor);
-		const tierImg = tierImageMap.get(tier.id);
-
-		// Top tier index in block
-		ctx.fillStyle = textColor;
-		ctx.font = '500 9px "IBM Plex Mono", Menlo, Consolas, monospace';
-		ctx.textAlign = 'left';
-		ctx.textBaseline = 'top';
-		ctx.fillText((tIdx + 1).toString().padStart(2, '0') + ' //', padding + 8, currentY + 6);
-
-		if (tierImg) {
-			// Draw Badge Icon centered
-			const iconSize = Math.min(50, tHeight - 28);
-			const iconX = padding + (tierHeaderWidth - iconSize) / 2;
-			const iconY = currentY + (tHeight - iconSize) / 2 - (tier.label ? 4 : 0);
-
-			ctx.drawImage(tierImg, iconX, iconY, iconSize, iconSize);
-
-			if (tier.label && tier.label !== ' ') {
-				ctx.fillStyle = textColor;
-				ctx.font = '500 10px "IBM Plex Mono", Menlo, Consolas, monospace';
-				ctx.textAlign = 'center';
-				ctx.textBaseline = 'top';
-				ctx.fillText(
-					tier.label,
-					padding + tierHeaderWidth / 2,
-					iconY + iconSize + 2,
-					tierHeaderWidth - 8
-				);
+	try {
+		const tierPromises = tiersWithImages.map(async (tier) => {
+			if (!tier.imageUrl) return;
+			const result = await loadImageSafe(tier.imageUrl);
+			if (result) {
+				tierImageMap.set(tier.id, result.img);
+				if (result.cleanup) cleanupFns.push(result.cleanup);
 			}
-		} else {
-			// Tier Label Text
-			ctx.fillStyle = textColor;
-			ctx.font = 'normal 20px "ET Book", "Iowan Old Style", "Palatino Linotype", "Georgia", serif';
-			ctx.textAlign = 'center';
-			ctx.textBaseline = 'middle';
+			incrementProgress();
+		});
 
-			const labelText = tier.label || '';
-			ctx.fillText(
-				labelText,
-				padding + tierHeaderWidth / 2,
-				currentY + tHeight / 2,
-				tierHeaderWidth - 10
-			);
-		}
-
-		// Draw items in tier
-		ctx.textAlign = 'left';
-		ctx.textBaseline = 'alphabetic';
-
-		let cardX = padding + tierHeaderWidth + 12;
-		let cardY = currentY + 8;
-		let colIndex = 0;
-
-		for (const item of tierItems) {
-			const img = imageMap.get(item.id);
-
-			// Card Box Background
-			ctx.fillStyle = '#12151a';
-			ctx.fillRect(cardX, cardY, cardSize, cardSize);
-
-			if (img) {
-				ctx.save();
-				ctx.beginPath();
-				ctx.rect(cardX, cardY, cardSize, cardSize);
-				ctx.clip();
-
-				const aspect = img.width / img.height;
-				let drawW = cardSize;
-				let drawH = cardSize;
-				let offsetX = 0;
-				let offsetY = 0;
-
-				if (aspect > 1) {
-					drawW = cardSize * aspect;
-					offsetX = -(drawW - cardSize) / 2;
-				} else {
-					drawH = cardSize / aspect;
-					offsetY = -(drawH - cardSize) / 2;
-				}
-
-				ctx.drawImage(img, cardX + offsetX, cardY + offsetY, drawW, drawH);
-
-				// Dark gradient overlay for text readability
-				const grad = ctx.createLinearGradient(
-					cardX,
-					cardY + cardSize - 26,
-					cardX,
-					cardY + cardSize
-				);
-				grad.addColorStop(0, 'rgba(8,9,11,0)');
-				grad.addColorStop(1, 'rgba(8,9,11,0.92)');
-				ctx.fillStyle = grad;
-				ctx.fillRect(cardX, cardY + cardSize - 26, cardSize, 26);
-
-				ctx.restore();
-			}
-
-			// 1px border stroke around card
-			ctx.strokeStyle = 'rgba(186, 157, 108, 0.2)';
-			ctx.lineWidth = 1;
-			ctx.strokeRect(cardX, cardY, cardSize, cardSize);
-
-			// Card Name text at bottom
-			ctx.fillStyle = '#f0e8da';
-			ctx.font = '500 9px "IBM Plex Mono", Menlo, Consolas, monospace';
-			ctx.fillText(
-				item.name ? item.name.toLowerCase() : '',
-				cardX + 4,
-				cardY + cardSize - 5,
-				cardSize - 8
-			);
-
-			// Next card position
-			colIndex++;
-			if (colIndex >= cardsPerRow) {
-				colIndex = 0;
-				cardX = padding + tierHeaderWidth + 12;
-				cardY += cardSize + cardGap;
-			} else {
-				cardX += cardSize + cardGap;
-			}
-		}
-
-		currentY += tHeight + 2;
-	}
-
-	// 5. Footer Watermark
-	ctx.fillStyle = '#7e7568';
-	ctx.font = '500 10px "IBM Plex Mono", Menlo, Consolas, monospace';
-	ctx.textAlign = 'right';
-	ctx.fillText('IMAGINE A TIER LIST // BY HYVNT', boardWidth - padding, boardHeight - padding + 8);
-
-	// Convert canvas to blob & trigger download
-	return new Promise((resolve) => {
-		canvas.toBlob((blob) => {
-			if (!blob) {
-				resolve(false);
+		const itemPromises = rankedItems.map(async (item) => {
+			if (!item.imageUrl) {
+				incrementProgress();
 				return;
 			}
+			const result = await loadImageSafe(item.imageUrl);
+			if (result) {
+				imageMap.set(item.id, result.img);
+				if (result.cleanup) cleanupFns.push(result.cleanup);
+			}
+			incrementProgress();
+		});
 
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			const cleanTitle = (board.title || 'tier-list').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-			a.href = url;
-			a.download = `${cleanTitle}-tierlist.png`;
-			a.click();
-			URL.revokeObjectURL(url);
-			resolve(true);
-		}, 'image/png');
-	});
+		await Promise.all([...tierPromises, ...itemPromises]);
+
+		// 4. Render Tier Rows
+		let currentY = padding + headerHeight;
+
+		for (let tIdx = 0; tIdx < tiers.length; tIdx++) {
+			const tier = tiers[tIdx];
+			const tHeight = tierHeights[tIdx];
+			const tierColor = getTierColor(tier, theme);
+			const tierItems = (board.items || [])
+				.filter((i) => i && i.tierId === tier.id)
+				.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+			// Row background
+			ctx.fillStyle = theme === 'classic' ? '#18181b' : '#0d1014';
+			ctx.fillRect(padding, currentY, boardWidth - padding * 2, tHeight);
+
+			// Left Tier Label Block
+			ctx.fillStyle = tierColor;
+			ctx.fillRect(padding, currentY, tierHeaderWidth, tHeight);
+
+			const textColor = getContrastTextColor(tierColor);
+			const tierImg = tierImageMap.get(tier.id);
+
+			// Top tier index in block
+			ctx.fillStyle = textColor;
+			ctx.font = '500 9px "IBM Plex Mono", Menlo, Consolas, monospace';
+			ctx.textAlign = 'left';
+			ctx.textBaseline = 'top';
+			ctx.fillText((tIdx + 1).toString().padStart(2, '0') + ' //', padding + 8, currentY + 6);
+
+			if (tierImg) {
+				// Draw Badge Icon centered
+				const iconSize = Math.min(50, tHeight - 28);
+				const iconX = padding + (tierHeaderWidth - iconSize) / 2;
+				const iconY = currentY + (tHeight - iconSize) / 2 - (tier.label ? 4 : 0);
+
+				ctx.drawImage(tierImg, iconX, iconY, iconSize, iconSize);
+
+				if (tier.label && tier.label !== ' ') {
+					ctx.fillStyle = textColor;
+					ctx.font = '500 10px "IBM Plex Mono", Menlo, Consolas, monospace';
+					ctx.textAlign = 'center';
+					ctx.textBaseline = 'top';
+					ctx.fillText(
+						tier.label,
+						padding + tierHeaderWidth / 2,
+						iconY + iconSize + 2,
+						tierHeaderWidth - 8
+					);
+				}
+			} else {
+				// Tier Label Text
+				ctx.fillStyle = textColor;
+				ctx.font =
+					'normal 20px "ET Book", "Iowan Old Style", "Palatino Linotype", "Georgia", serif';
+				ctx.textAlign = 'center';
+				ctx.textBaseline = 'middle';
+
+				const labelText = tier.label || '';
+				ctx.fillText(
+					labelText,
+					padding + tierHeaderWidth / 2,
+					currentY + tHeight / 2,
+					tierHeaderWidth - 10
+				);
+			}
+
+			// Draw items in tier
+			ctx.textAlign = 'left';
+			ctx.textBaseline = 'alphabetic';
+
+			let cardX = padding + tierHeaderWidth + 12;
+			let cardY = currentY + 8;
+			let colIndex = 0;
+
+			for (const item of tierItems) {
+				const img = imageMap.get(item.id);
+
+				// Card Box Background
+				ctx.fillStyle = theme === 'classic' ? '#18181b' : '#12151a';
+				ctx.fillRect(cardX, cardY, cardSize, cardSize);
+
+				if (img) {
+					ctx.save();
+					ctx.beginPath();
+					ctx.rect(cardX, cardY, cardSize, cardSize);
+					ctx.clip();
+
+					const aspect = img.width / img.height;
+					let drawW = cardSize;
+					let drawH = cardSize;
+					let offsetX = 0;
+					let offsetY = 0;
+
+					if (aspect > 1) {
+						drawW = cardSize * aspect;
+						offsetX = -(drawW - cardSize) / 2;
+					} else {
+						drawH = cardSize / aspect;
+						offsetY = -(drawH - cardSize) / 2;
+					}
+
+					ctx.drawImage(img, cardX + offsetX, cardY + offsetY, drawW, drawH);
+
+					// Dark gradient overlay for text readability
+					const grad = ctx.createLinearGradient(
+						cardX,
+						cardY + cardSize - 26,
+						cardX,
+						cardY + cardSize
+					);
+					grad.addColorStop(0, 'rgba(8,9,11,0)');
+					grad.addColorStop(1, 'rgba(8,9,11,0.92)');
+					ctx.fillStyle = grad;
+					ctx.fillRect(cardX, cardY + cardSize - 26, cardSize, 26);
+
+					ctx.restore();
+				} else {
+					// Fallback visual when card has no image or image is unavailable
+					ctx.fillStyle = theme === 'classic' ? '#27272a' : '#1a1f26';
+					ctx.fillRect(cardX + 4, cardY + 4, cardSize - 8, cardSize - 32);
+
+					// Initials badge in center of fallback card
+					const initials = (item.name || '?')
+						.split(/\s+/)
+						.map((w) => w[0])
+						.filter(Boolean)
+						.slice(0, 2)
+						.join('')
+						.toUpperCase();
+
+					ctx.fillStyle = theme === 'classic' ? '#71717a' : '#7e7568';
+					ctx.font = '600 16px "IBM Plex Mono", Menlo, Consolas, monospace';
+					ctx.textAlign = 'center';
+					ctx.textBaseline = 'middle';
+					ctx.fillText(initials, cardX + cardSize / 2, cardY + (cardSize - 28) / 2);
+				}
+
+				// 1px border stroke around card
+				ctx.strokeStyle = theme === 'classic' ? '#27272a' : 'rgba(186, 157, 108, 0.2)';
+				ctx.lineWidth = 1;
+				ctx.strokeRect(cardX, cardY, cardSize, cardSize);
+
+				// Card Name text at bottom
+				ctx.fillStyle = theme === 'classic' ? '#e4e4e7' : '#f0e8da';
+				ctx.font = '500 9px "IBM Plex Mono", Menlo, Consolas, monospace';
+				ctx.textAlign = 'left';
+				ctx.textBaseline = 'alphabetic';
+				ctx.fillText(
+					item.name ? item.name.toLowerCase() : '',
+					cardX + 4,
+					cardY + cardSize - 5,
+					cardSize - 8
+				);
+
+				// Next card position
+				colIndex++;
+				if (colIndex >= cardsPerRow) {
+					colIndex = 0;
+					cardX = padding + tierHeaderWidth + 12;
+					cardY += cardSize + cardGap;
+				} else {
+					cardX += cardSize + cardGap;
+				}
+			}
+
+			currentY += tHeight + 2;
+		}
+
+		// 5. Footer Watermark
+		ctx.fillStyle = '#7e7568';
+		ctx.font = '500 10px "IBM Plex Mono", Menlo, Consolas, monospace';
+		ctx.textAlign = 'right';
+		ctx.fillText(
+			'IMAGINE A TIER LIST // BY HYVNT',
+			boardWidth - padding,
+			boardHeight - padding + 8
+		);
+
+		// Convert canvas to blob & trigger download
+		return await new Promise((resolve) => {
+			try {
+				canvas.toBlob((blob) => {
+					if (!blob) {
+						resolve(false);
+						return;
+					}
+
+					const url = URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					const cleanTitle = (board.title || 'tier-list').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+					a.href = url;
+					a.download = `${cleanTitle}-tierlist.png`;
+					a.click();
+					URL.revokeObjectURL(url);
+					resolve(true);
+				}, 'image/png');
+			} catch (canvasErr) {
+				console.error('[exportImage] Canvas export failed with error:', canvasErr);
+				resolve(false);
+			}
+		});
+	} finally {
+		// Clean up any generated object URLs to prevent memory leaks
+		for (const cleanup of cleanupFns) {
+			try {
+				cleanup();
+			} catch {
+				// Ignore cleanup error
+			}
+		}
+	}
 }

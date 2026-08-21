@@ -63,7 +63,7 @@
 		isExportingPng = true;
 		pngExportSuccess = false;
 
-		const success = await exportBoardAsPng(board);
+		const success = await exportBoardAsPng(board, undefined, themeStore.current);
 		isExportingPng = false;
 
 		if (success) {
