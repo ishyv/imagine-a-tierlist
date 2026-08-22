@@ -1,0 +1,29 @@
+{
+	"id": "board-league-midlaners",
+	"title": "League of Legends Midlaners",
+	"context": "A sample ranking of League of Legends mid lane champions",
+	"tiers": [
+		{ "id": "tier-s", "label": "S", "color": "#FFD000", "order": 0 },
+		{ "id": "tier-a", "label": "A", "color": "#A335EE", "order": 1 },
+		{ "id": "tier-b", "label": "B", "color": "#0070DD", "order": 2 }
+	],
+	"items": [
+		{ "id": "item-azir", "name": "Azir", "imageUrl": "", "tierId": "tier-s", "order": 0 },
+		{ "id": "item-orianna", "name": "Orianna", "imageUrl": "", "tierId": "tier-s", "order": 1 },
+		{ "id": "item-syndra", "name": "Syndra", "imageUrl": "", "tierId": "tier-s", "order": 2 },
+		{ "id": "item-ahri", "name": "Ahri", "imageUrl": "", "tierId": "tier-a", "order": 0 },
+		{ "id": "item-viktor", "name": "Viktor", "imageUrl": "", "tierId": "tier-a", "order": 1 },
+		{ "id": "item-taliyah", "name": "Taliyah", "imageUrl": "", "tierId": "tier-a", "order": 2 },
+		{ "id": "item-sylas", "name": "Sylas", "imageUrl": "", "tierId": "tier-a", "order": 3 },
+		{ "id": "item-akali", "name": "Akali", "imageUrl": "", "tierId": "tier-b", "order": 0 },
+		{
+			"id": "item-cassiopeia",
+			"name": "Cassiopeia",
+			"imageUrl": "",
+			"tierId": "tier-b",
+			"order": 1
+		},
+		{ "id": "item-vex", "name": "Vex", "imageUrl": "", "tierId": "tier-b", "order": 2 }
+	],
+	"version": 3
+}

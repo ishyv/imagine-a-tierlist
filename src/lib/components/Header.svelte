@@ -86,12 +86,12 @@
 		importError = '';
 		if (!importText.trim()) return;
 
-		const success = board.importJson(importText.trim());
-		if (success) {
+		const result = board.importJson(importText.trim());
+		if (result.ok) {
 			isImportModalOpen = false;
 			importText = '';
 		} else {
-			importError = 'invalid json data structure. check formatting.';
+			importError = result.message;
 		}
 	}
 
@@ -166,6 +166,8 @@
 		<div class="space-y-1.5">
 			<div class="flex items-baseline gap-2">
 				<input
+					id="board-title"
+					name="title"
 					type="text"
 					value={board.title}
 					oninput={(e) => board.setTitle(e.currentTarget.value)}
@@ -215,6 +217,8 @@
 					{themeStore.current === 'hyv' ? 'SCOPE:' : 'Context:'}
 				</span>
 				<input
+					id="board-context"
+					name="context"
 					type="text"
 					value={board.context}
 					oninput={(e) => board.setContext(e.currentTarget.value)}
@@ -510,6 +514,8 @@
 					</span>
 				</button>
 				<input
+					id="board-json-file"
+					name="boardFile"
 					type="file"
 					accept=".json"
 					bind:this={jsonFileInput}
@@ -528,6 +534,8 @@
 			</div>
 
 			<textarea
+				id="board-import-json"
+				name="boardJson"
 				bind:value={importText}
 				rows="6"
 				placeholder="paste json string..."
@@ -537,7 +545,7 @@
 					: ''}"></textarea>
 
 			{#if importError}
-				<p class="mt-2 font-mono text-xs text-status-fail">{importError}</p>
+				<p class="mt-2 font-mono text-xs text-status-fail" role="alert">{importError}</p>
 			{/if}
 
 			<div class="mt-5 flex justify-end gap-2 text-xs">

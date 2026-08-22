@@ -5,8 +5,8 @@ import {
 	saveBoardToRegistry,
 	deleteBoardFromRegistry,
 	getBoardsRegistry,
-	sanitizeBoard,
 	sanitizeTasteProfileSnapshot,
+	parseBoardImport,
 	CURRENT_VERSION
 } from '#lib/services/persistence.js';
 import { cardStash } from '#lib/stores/cardStash.svelte.js';
@@ -669,30 +669,26 @@ class BoardStore {
 	/**
 	 * Imports board from JSON string
 	 * @param {string} jsonString
+	 * @returns {import('#lib/services/persistence.js').BoardImportResult}
 	 */
 	importJson(jsonString) {
-		try {
-			const parsed = JSON.parse(jsonString);
-			const sanitized = sanitizeBoard(parsed);
-			if (sanitized) {
-				this.id = sanitized.id || `board-${Date.now()}`;
-				this.title = sanitized.title || 'Tier List';
-				this.context = sanitized.context || '';
-				this.tiers = sanitized.tiers.length > 0 ? sanitized.tiers : createDefaultTiers();
-				this.items = sanitized.items;
-				this.tasteProfile = sanitized.tasteProfile;
-				this.version = sanitized.version || CURRENT_VERSION;
-				this.persist();
+		const result = parseBoardImport(jsonString);
+		if (!result.ok) return result;
 
-				// Also auto-pipe imported items to card stash
-				cardStash.addBulkCards(this.items, this.context);
+		const sanitized = result.board;
+		this.id = sanitized.id || `board-${Date.now()}`;
+		this.title = sanitized.title || 'Tier List';
+		this.context = sanitized.context || '';
+		this.tiers = sanitized.tiers.length > 0 ? sanitized.tiers : createDefaultTiers();
+		this.items = sanitized.items;
+		this.tasteProfile = sanitized.tasteProfile;
+		this.version = sanitized.version || CURRENT_VERSION;
+		this.persist();
 
-				return true;
-			}
-		} catch (e) {
-			console.error('Failed to parse board JSON:', e);
-		}
-		return false;
+		// Also auto-pipe imported items to card stash
+		cardStash.addBulkCards(this.items, this.context);
+
+		return result;
 	}
 
 	/**

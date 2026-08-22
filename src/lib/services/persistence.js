@@ -411,6 +411,134 @@ export function sanitizeBoard(raw) {
 }
 
 /**
+ * @typedef {Object} BoardImportSuccess
+ * @property {true} ok
+ * @property {Board} board
+ *
+ * @typedef {Object} BoardImportFailure
+ * @property {false} ok
+ * @property {string} code
+ * @property {string} message
+ *
+ * @typedef {BoardImportSuccess | BoardImportFailure} BoardImportResult
+ */
+
+/** @type {Record<string, string>} */
+const BOARD_IMPORT_MESSAGES = Object.freeze({
+	INVALID_JSON: 'This file is not valid JSON. Check the file contents and try again.',
+	INVALID_BOARD_FORMAT:
+		'Expected a board export with tiers and a root `items` array. Each tier needs `id`, `label`, and numeric `order`; each item needs `id`, `name`, `tierId`, and numeric `order`.',
+	MISSING_ROOT_ITEMS:
+		'Expected a board export with a root `items` array. Nested `tiers[].items` data belongs to another format and cannot be imported here.',
+	DUPLICATE_TIER_ID: 'Every tier must have a unique `id`.',
+	DUPLICATE_ITEM_ID: 'Every item must have a unique `id`.',
+	UNKNOWN_TIER_ID: 'Every ranked item must reference an existing tier.'
+});
+
+/**
+ * @param {string} code
+ * @returns {BoardImportFailure}
+ */
+function boardImportFailure(code) {
+	return {
+		ok: false,
+		code,
+		message: BOARD_IMPORT_MESSAGES[code] || BOARD_IMPORT_MESSAGES.INVALID_BOARD_FORMAT
+	};
+}
+
+/**
+ * Validates the explicit board export contract before sanitization. This is
+ * intentionally separate from sanitizeBoard(), which remains permissive for
+ * local-storage migrations and legacy boards.
+ *
+ * @param {unknown} raw
+ * @returns {BoardImportResult}
+ */
+export function validateBoardImport(raw) {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+		return boardImportFailure('INVALID_BOARD_FORMAT');
+	}
+	const payload = /** @type {any} */ (raw);
+
+	if (!Array.isArray(payload.tiers) || payload.tiers.length === 0) {
+		return boardImportFailure('INVALID_BOARD_FORMAT');
+	}
+
+	if (!Array.isArray(payload.items)) {
+		return boardImportFailure('MISSING_ROOT_ITEMS');
+	}
+
+	const tierIds = new Set();
+	for (const tier of payload.tiers) {
+		if (
+			!tier ||
+			typeof tier !== 'object' ||
+			Array.isArray(tier) ||
+			typeof tier.id !== 'string' ||
+			!tier.id.trim() ||
+			typeof tier.label !== 'string' ||
+			!tier.label.trim() ||
+			typeof tier.order !== 'number' ||
+			!Number.isFinite(tier.order)
+		) {
+			return boardImportFailure('INVALID_BOARD_FORMAT');
+		}
+
+		if (tierIds.has(tier.id)) return boardImportFailure('DUPLICATE_TIER_ID');
+		tierIds.add(tier.id);
+
+		if (Array.isArray(tier.items)) return boardImportFailure('MISSING_ROOT_ITEMS');
+	}
+
+	const itemIds = new Set();
+	for (const item of payload.items) {
+		if (
+			!item ||
+			typeof item !== 'object' ||
+			Array.isArray(item) ||
+			typeof item.id !== 'string' ||
+			!item.id.trim() ||
+			typeof item.name !== 'string' ||
+			!item.name.trim() ||
+			typeof item.tierId === 'undefined' ||
+			(item.tierId !== null && (typeof item.tierId !== 'string' || !item.tierId.trim())) ||
+			typeof item.order !== 'number' ||
+			!Number.isFinite(item.order)
+		) {
+			return boardImportFailure('INVALID_BOARD_FORMAT');
+		}
+
+		if (itemIds.has(item.id)) return boardImportFailure('DUPLICATE_ITEM_ID');
+		itemIds.add(item.id);
+
+		if (item.tierId !== null && !tierIds.has(item.tierId)) {
+			return boardImportFailure('UNKNOWN_TIER_ID');
+		}
+	}
+
+	const board = sanitizeBoard(payload);
+	return board ? { ok: true, board } : boardImportFailure('INVALID_BOARD_FORMAT');
+}
+
+/**
+ * Parses and validates a JSON board export without changing application state.
+ * @param {string} jsonString
+ * @returns {BoardImportResult}
+ */
+export function parseBoardImport(jsonString) {
+	if (typeof jsonString !== 'string' || !jsonString.trim()) {
+		return boardImportFailure('INVALID_JSON');
+	}
+
+	try {
+		return validateBoardImport(JSON.parse(jsonString));
+	} catch {
+		return boardImportFailure('INVALID_JSON');
+	}
+}
+
+/**
  * Loads the active board from localStorage (with v1 fallback migration)
  * @returns {Board | null}
  */

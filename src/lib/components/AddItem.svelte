@@ -125,6 +125,8 @@
 			{/if}
 
 			<input
+				id="card-search"
+				name="cardSearch"
 				bind:this={searchInput}
 				type="text"
 				bind:value={inputQuery}
