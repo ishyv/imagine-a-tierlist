@@ -7,7 +7,283 @@ export const STORAGE_KEY = 'tierlist-board-v2';
 export const LEGACY_STORAGE_KEY = 'tierlist-board-v1';
 export const BOARDS_REGISTRY_KEY = 'tierlist-boards-registry-v2';
 export const LEGACY_BOARDS_REGISTRY_KEY = 'tierlist-boards-registry-v1';
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
+
+const TASTE_PROFILE_IDS = new Set(['games', 'movies', 'music', 'books', 'general']);
+const TASTE_PROFILE_CONFIDENCE = new Set(['low', 'medium', 'high', 'very_high']);
+const TASTE_PROFILE_STATUS = new Set(['matched', 'ambiguous', 'unavailable', 'fallback']);
+
+/**
+ * Keeps imported/local snapshots bounded and structurally safe without coupling
+ * browser persistence to the server-side model validator.
+ * @param {unknown} value
+ * @param {number} max
+ * @returns {string}
+ */
+function boundedText(value, max) {
+	return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function stringList(value) {
+	return Array.isArray(value)
+		? value
+				.filter((entry) => typeof entry === 'string')
+				.map((entry) => entry.slice(0, 120))
+				.slice(0, 24)
+		: [];
+}
+
+/**
+ * @param {unknown} value
+ * @returns {Record<string, unknown>}
+ */
+function safeMetadata(value) {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value)
+			.slice(0, 32)
+			.map(([key, entry]) => {
+				if (typeof entry === 'string') return [key.slice(0, 80), entry.slice(0, 1000)];
+				if (typeof entry === 'number' || typeof entry === 'boolean')
+					return [key.slice(0, 80), entry];
+				if (Array.isArray(entry)) {
+					return [
+						key.slice(0, 80),
+						entry
+							.filter((item) => typeof item === 'string')
+							.map((item) => item.slice(0, 160))
+							.slice(0, 24)
+					];
+				}
+				return [key.slice(0, 80), undefined];
+			})
+			.filter(([, entry]) => typeof entry !== 'undefined')
+	);
+}
+
+/**
+ * Sanitizes a generated taste profile snapshot before it enters localStorage.
+ * Invalid snapshots are discarded rather than allowed to break board loading.
+ * @param {any} raw
+ * @returns {import('#lib/types.js').TasteProfileSnapshot | undefined}
+ */
+export function sanitizeTasteProfileSnapshot(raw) {
+	if (!raw || typeof raw !== 'object') return undefined;
+	const boardFingerprint = boundedText(raw.boardFingerprint, 100);
+	const generatedAt = boundedText(raw.generatedAt, 80);
+	if (
+		!boardFingerprint ||
+		!generatedAt ||
+		!TASTE_PROFILE_IDS.has(raw.judgeProfileId) ||
+		typeof raw.judgeProfileVersion !== 'number' ||
+		!Number.isFinite(raw.judgeProfileVersion) ||
+		typeof raw.language !== 'string'
+	) {
+		return undefined;
+	}
+
+	const profile = raw.profile;
+	if (
+		!profile ||
+		typeof profile !== 'object' ||
+		!boundedText(profile.title, 180) ||
+		!boundedText(profile.summary, 1200) ||
+		!TASTE_PROFILE_CONFIDENCE.has(profile.confidence)
+	) {
+		return undefined;
+	}
+
+	/** @param {any} value */
+	const sources = (value) =>
+		Array.isArray(value)
+			? value
+					.filter(
+						(source) =>
+							source &&
+							typeof source === 'object' &&
+							typeof source.url === 'string' &&
+							/^https?:\/\//i.test(source.url)
+					)
+					.map((source) => ({
+						provider: boundedText(source.provider, 80) || 'unknown',
+						url: boundedText(source.url, 500),
+						...(boundedText(source.label, 160) ? { label: boundedText(source.label, 160) } : {})
+					}))
+					.filter((source) => source.url)
+					.slice(0, 12)
+			: [];
+
+	const enrichedItems = Array.isArray(raw.enrichedItems)
+		? raw.enrichedItems
+				.filter(
+					/** @param {any} item */
+					(item) =>
+						item &&
+						typeof item === 'object' &&
+						typeof item.itemId === 'string' &&
+						typeof item.canonicalName === 'string' &&
+						typeof item.domain === 'string' &&
+						typeof item.entityKind === 'string' &&
+						TASTE_PROFILE_STATUS.has(item.status) &&
+						TASTE_PROFILE_CONFIDENCE.has(item.confidence)
+				)
+				.map(
+					/** @param {any} item */
+					(item) => ({
+						itemId: boundedText(item.itemId, 120),
+						canonicalName: boundedText(item.canonicalName, 180),
+						domain: boundedText(item.domain, 40),
+						entityKind: boundedText(item.entityKind, 60),
+						status: item.status,
+						confidence: item.confidence,
+						metadata: safeMetadata(item.metadata),
+						sources: sources(item.sources),
+						...(boundedText(item.message, 300) ? { message: boundedText(item.message, 300) } : {})
+					})
+				)
+				.filter(
+					/** @param {any} item */
+					(item) => item.itemId && item.canonicalName
+				)
+				.slice(0, 100)
+		: [];
+
+	const sections = Array.isArray(raw.sections)
+		? raw.sections
+				.filter(
+					/** @param {any} section */
+					(section) => section && typeof section === 'object'
+				)
+				.map(
+					/** @param {any} section */
+					(section) => ({
+						id: boundedText(section.id, 80),
+						title: boundedText(section.title, 180),
+						thesis: boundedText(section.thesis, 700),
+						analysis: boundedText(section.analysis, 1800),
+						evidenceItemIds: stringList(section.evidenceItemIds),
+						counterEvidenceItemIds: stringList(section.counterEvidenceItemIds),
+						confidence: section.confidence
+					})
+				)
+				.filter(
+					/** @param {any} section */
+					(section) =>
+						section.id &&
+						section.title &&
+						section.thesis &&
+						section.analysis &&
+						TASTE_PROFILE_CONFIDENCE.has(section.confidence)
+				)
+				.slice(0, 8)
+		: [];
+
+	const mindset = Array.isArray(raw.mindset)
+		? raw.mindset
+				.filter(
+					/** @param {any} entry */
+					(entry) => entry && typeof entry === 'object'
+				)
+				.map(
+					/** @param {any} entry */
+					(entry) => ({
+						left: boundedText(entry.left, 120),
+						right: boundedText(entry.right, 120),
+						leansToward: boundedText(entry.leansToward, 120),
+						strength:
+							typeof entry.strength === 'number' ? Math.max(0, Math.min(10, entry.strength)) : 0,
+						explanation: boundedText(entry.explanation, 900),
+						evidenceItemIds: stringList(entry.evidenceItemIds)
+					})
+				)
+				.filter(
+					/** @param {any} entry */
+					(entry) => entry.left && entry.right && entry.explanation && entry.evidenceItemIds.length
+				)
+				.slice(0, 8)
+		: [];
+
+	const tasteVector = Array.isArray(raw.tasteVector)
+		? raw.tasteVector
+				.filter(
+					/** @param {any} dimension */
+					(dimension) => dimension && typeof dimension === 'object'
+				)
+				.map(
+					/** @param {any} dimension */
+					(dimension) => ({
+						id: boundedText(dimension.id, 80),
+						name: boundedText(dimension.name, 120),
+						score:
+							typeof dimension.score === 'number'
+								? Math.max(0, Math.min(10, Math.round(dimension.score)))
+								: 0,
+						confidence: dimension.confidence,
+						summary: boundedText(dimension.summary, 500),
+						evidenceItemIds: stringList(dimension.evidenceItemIds),
+						counterEvidenceItemIds: stringList(dimension.counterEvidenceItemIds)
+					})
+				)
+				.filter(
+					/** @param {any} dimension */
+					(dimension) =>
+						dimension.id &&
+						dimension.name &&
+						dimension.summary &&
+						TASTE_PROFILE_CONFIDENCE.has(dimension.confidence) &&
+						dimension.evidenceItemIds.length
+				)
+				.slice(0, 12)
+		: [];
+
+	const enrichmentReport = Array.isArray(raw.enrichmentReport)
+		? raw.enrichmentReport
+				.filter(
+					/** @param {any} entry */
+					(entry) => entry && typeof entry === 'object'
+				)
+				.map(
+					/** @param {any} entry */
+					(entry) => ({
+						provider: boundedText(entry.provider, 80),
+						status: boundedText(entry.status, 80),
+						matchedCount:
+							typeof entry.matchedCount === 'number' ? Math.max(0, entry.matchedCount) : 0,
+						failedCount: typeof entry.failedCount === 'number' ? Math.max(0, entry.failedCount) : 0,
+						...(boundedText(entry.message, 300) ? { message: boundedText(entry.message, 300) } : {})
+					})
+				)
+				.filter(
+					/** @param {any} entry */
+					(entry) => entry.provider
+				)
+				.slice(0, 12)
+		: [];
+
+	return {
+		boardFingerprint,
+		generatedAt,
+		judgeProfileId: raw.judgeProfileId,
+		judgeProfileVersion: Math.max(1, Math.floor(raw.judgeProfileVersion)),
+		language: boundedText(raw.language, 12) || 'en',
+		profile: {
+			title: boundedText(profile.title, 180),
+			summary: boundedText(profile.summary, 1200),
+			confidence: profile.confidence
+		},
+		sections,
+		mindset,
+		tasteVector,
+		limitations: stringList(raw.limitations),
+		closingSummary: boundedText(raw.closingSummary, 1200),
+		enrichedItems,
+		enrichmentReport
+	};
+}
 
 /**
  * Standard gaming prestige color mapping
@@ -121,6 +397,7 @@ export function sanitizeBoard(raw) {
 					})
 				)
 		: [];
+	const tasteProfile = sanitizeTasteProfileSnapshot(raw.tasteProfile);
 
 	return {
 		id: typeof raw.id === 'string' && raw.id ? raw.id : `board-${Date.now()}`,
@@ -128,7 +405,8 @@ export function sanitizeBoard(raw) {
 		context: typeof raw.context === 'string' ? raw.context : '',
 		tiers: validTiers,
 		items: validItems,
-		version: CURRENT_VERSION
+		version: CURRENT_VERSION,
+		...(tasteProfile ? { tasteProfile } : {})
 	};
 }
 

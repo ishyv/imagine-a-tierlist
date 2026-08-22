@@ -13,8 +13,10 @@
 		Palette
 	} from 'lucide-svelte';
 	import { board, TIER_COLOR_PALETTE } from '#lib/stores/board.svelte.js';
+	import { getAnalysisEligibility } from '#lib/services/tasteProfile.js';
 	import { cardStash } from '#lib/stores/cardStash.svelte.js';
 	import { themeStore } from '#lib/stores/theme.svelte.js';
+	import { goto } from '$app/navigation';
 	import { exportBoardAsPng } from '#lib/services/exportImage.js';
 	import StatusDot from './ambient/StatusDot.svelte';
 	import CornerBrackets from './ambient/CornerBrackets.svelte';
@@ -33,6 +35,7 @@
 	let pngExportSuccess = $state(false);
 	let importText = $state('');
 	let importError = $state('');
+	let tasteEligibility = $derived(getAnalysisEligibility(board));
 	/** @type {HTMLInputElement | null} */
 	let jsonFileInput = $state(null);
 
@@ -45,6 +48,11 @@
 		const nextColor =
 			TIER_COLOR_PALETTE[board.tiers.length % TIER_COLOR_PALETTE.length] || '#0070DD';
 		board.addTier('NEW', nextColor);
+	}
+
+	function handleAnalyzeTaste() {
+		if (!tasteEligibility.eligible) return;
+		goto(`/taste-profile/${encodeURIComponent(board.id)}`);
 	}
 
 	function handleExportJson() {
@@ -286,6 +294,29 @@
 				/>
 				<span class={themeStore.current === 'hyv' ? 'tracking-wide uppercase' : ''}>
 					{themeStore.current === 'hyv' ? 'AUTO-RANK' : 'Auto-Rank'}
+				</span>
+			</button>
+
+			<!-- Taste Profile Button -->
+			<button
+				type="button"
+				disabled={!tasteEligibility.eligible}
+				class="flex cursor-pointer items-center gap-1.5 border px-3 py-1.5 text-xs font-medium transition-all duration-150 active:translate-y-px {themeStore.current ===
+				'hyv'
+					? 'border-accent/50 bg-accent/10 text-accent shadow-xs hover:border-accent-strong hover:bg-accent/20 hover:text-accent-strong disabled:cursor-not-allowed disabled:border-line disabled:bg-bg-surface disabled:text-muted'
+					: 'rounded-lg border-violet-500/30 bg-violet-500/10 font-semibold text-violet-300 hover:bg-violet-500/20 hover:text-violet-200 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600'}"
+				onclick={handleAnalyzeTaste}
+				title={tasteEligibility.eligible
+					? 'Analyze the finished tier list with a curated taste profile'
+					: tasteEligibility.message}
+				aria-label="Analyze taste profile"
+			>
+				<Sparkles
+					size={12}
+					class={themeStore.current === 'hyv' ? 'text-accent' : 'text-violet-400'}
+				/>
+				<span class={themeStore.current === 'hyv' ? 'tracking-wide uppercase' : ''}>
+					{themeStore.current === 'hyv' ? 'ANALYZE TASTE' : 'Analyze Taste'}
 				</span>
 			</button>
 

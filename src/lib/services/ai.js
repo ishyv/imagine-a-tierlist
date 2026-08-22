@@ -1,4 +1,5 @@
 import { searchImages } from './imageSearch.js';
+import { toAnalysisBoard } from './tasteProfile.js';
 
 /**
  * @typedef {Object} BulkGeneratedItem
@@ -165,6 +166,94 @@ export async function fetchSuggestions(title, context = '', existingNames = [], 
 			message: 'Could not connect to suggestions service.'
 		};
 	}
+}
+
+/**
+ * @param {string} path
+ * @param {Record<string, unknown>} body
+ * @returns {Promise<any>}
+ */
+async function requestTasteProfileStage(path, body) {
+	try {
+		const res = await fetch(path, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok || data.error) {
+			const error =
+				typeof data.error === 'string' ? data.error : data.error?.code || 'TASTE_PROFILE_FAILED';
+			return {
+				...data,
+				error,
+				message:
+					typeof data.error === 'object'
+						? data.error.message
+						: data.message || 'Taste Profile request failed.'
+			};
+		}
+		return data;
+	} catch (error) {
+		console.error(`Taste Profile request failed (${path}):`, error);
+		return {
+			error: 'NETWORK_ERROR',
+			message: 'Could not connect to the Taste Profile service.'
+		};
+	}
+}
+
+/**
+ * Detects the most likely Judge Profile without spending an AI generation.
+ * @param {import('#lib/types.js').Board} board
+ * @param {string} [language]
+ * @returns {Promise<any>}
+ */
+export async function detectTasteProfile(board, language = 'en') {
+	return requestTasteProfileStage('/api/ai/taste-profile/detect', {
+		board: toAnalysisBoard(board),
+		language
+	});
+}
+
+/**
+ * Enriches ranked board items with domain-specific external metadata.
+ * @param {import('#lib/types.js').Board} board
+ * @param {import('#lib/types.js').JudgeProfileId} profileId
+ * @param {string} [language]
+ * @returns {Promise<any>}
+ */
+export async function enrichTasteProfile(board, profileId, language = 'en') {
+	return requestTasteProfileStage('/api/ai/taste-profile/enrich', {
+		board: toAnalysisBoard(board),
+		profileId,
+		language
+	});
+}
+
+/**
+ * Generates the final evidence-backed profile from enriched items.
+ * @param {import('#lib/types.js').Board} board
+ * @param {import('#lib/types.js').JudgeProfileId} profileId
+ * @param {any[]} enrichedItems
+ * @param {any[]} enrichmentReport
+ * @param {string} [language]
+ * @returns {Promise<any>}
+ */
+export async function analyzeTasteProfile(
+	board,
+	profileId,
+	enrichedItems,
+	enrichmentReport,
+	language = 'en'
+) {
+	return requestTasteProfileStage('/api/ai/taste-profile/analyze', {
+		board: toAnalysisBoard(board),
+		profileId,
+		language,
+		enrichedItems,
+		enrichmentReport
+	});
 }
 
 /**

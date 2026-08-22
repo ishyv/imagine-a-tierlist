@@ -6,6 +6,7 @@ import {
 	deleteBoardFromRegistry,
 	getBoardsRegistry,
 	sanitizeBoard,
+	sanitizeTasteProfileSnapshot,
 	CURRENT_VERSION
 } from '#lib/services/persistence.js';
 import { cardStash } from '#lib/stores/cardStash.svelte.js';
@@ -64,7 +65,8 @@ export function createDefaultBoard(title = 'Tier List', context = '', theme = 'h
 		context,
 		tiers: createDefaultTiers(theme),
 		items: [],
-		version: CURRENT_VERSION
+		version: CURRENT_VERSION,
+		tasteProfile: undefined
 	};
 }
 
@@ -77,6 +79,8 @@ class BoardStore {
 	items = $state([]);
 	version = $state(CURRENT_VERSION);
 	id = $state('board-default');
+	/** @type {import('#lib/types.js').TasteProfileSnapshot | undefined} */
+	tasteProfile = $state(undefined);
 	initialized = $state(false);
 	lastSavedAt = $state(Date.now());
 	isSaved = $state(true);
@@ -101,6 +105,7 @@ class BoardStore {
 				Array.isArray(saved.tiers) && saved.tiers.length > 0 ? saved.tiers : createDefaultTiers();
 			this.items = Array.isArray(saved.items) ? saved.items : [];
 			this.version = saved.version || CURRENT_VERSION;
+			this.tasteProfile = saved.tasteProfile;
 		}
 
 		this.initialized = true;
@@ -114,7 +119,8 @@ class BoardStore {
 			context: this.context,
 			tiers: $state.snapshot(this.tiers),
 			items: $state.snapshot(this.items),
-			version: this.version
+			version: this.version,
+			...(this.tasteProfile ? { tasteProfile: $state.snapshot(this.tasteProfile) } : {})
 		});
 		this.lastSavedAt = Date.now();
 		this.isSaved = true;
@@ -562,6 +568,7 @@ class BoardStore {
 		this.context = context;
 		this.tiers = createDefaultTiers();
 		this.items = [];
+		this.tasteProfile = undefined;
 		this.persist();
 	}
 
@@ -586,6 +593,7 @@ class BoardStore {
 					: createDefaultTiers();
 			this.items = Array.isArray(loaded.items) ? loaded.items : [];
 			this.version = loaded.version || CURRENT_VERSION;
+			this.tasteProfile = loaded.tasteProfile;
 			this.persist();
 		}
 	}
@@ -600,7 +608,10 @@ class BoardStore {
 			context: this.context,
 			tiers: JSON.parse(JSON.stringify($state.snapshot(this.tiers))),
 			items: JSON.parse(JSON.stringify($state.snapshot(this.items))),
-			version: this.version
+			version: this.version,
+			...(this.tasteProfile
+				? { tasteProfile: JSON.parse(JSON.stringify($state.snapshot(this.tasteProfile))) }
+				: {})
 		};
 
 		saveBoardToRegistry(clone);
@@ -631,6 +642,7 @@ class BoardStore {
 		this.context = '';
 		this.tiers = createDefaultTiers();
 		this.items = [];
+		this.tasteProfile = undefined;
 		this.persist();
 	}
 
@@ -646,7 +658,8 @@ class BoardStore {
 				context: this.context,
 				tiers: $state.snapshot(this.tiers),
 				items: $state.snapshot(this.items),
-				version: this.version
+				version: this.version,
+				...(this.tasteProfile ? { tasteProfile: $state.snapshot(this.tasteProfile) } : {})
 			},
 			null,
 			2
@@ -667,6 +680,7 @@ class BoardStore {
 				this.context = sanitized.context || '';
 				this.tiers = sanitized.tiers.length > 0 ? sanitized.tiers : createDefaultTiers();
 				this.items = sanitized.items;
+				this.tasteProfile = sanitized.tasteProfile;
 				this.version = sanitized.version || CURRENT_VERSION;
 				this.persist();
 
@@ -679,6 +693,15 @@ class BoardStore {
 			console.error('Failed to parse board JSON:', e);
 		}
 		return false;
+	}
+
+	/**
+	 * Stores a validated generated snapshot and persists it with the board.
+	 * @param {import('#lib/types.js').TasteProfileSnapshot | null | undefined} snapshot
+	 */
+	setTasteProfile(snapshot) {
+		this.tasteProfile = snapshot ? sanitizeTasteProfileSnapshot(snapshot) : undefined;
+		this.persist();
 	}
 }
 
